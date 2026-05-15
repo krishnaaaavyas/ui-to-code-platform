@@ -1,22 +1,35 @@
-import Toolbar from './components/canvas/Toolbar';
-import DesignerCanvas from './components/canvas/DesignerCanvas';
-import PropertiesPanel from './components/canvas/PropertiesPanel';
+import { useEffect } from "react";
+import ToolBar from "./components/canvas/ToolBar.jsx";
+import DesignerCanvas from "./components/canvas/DesignerCanvas.jsx";
+import PropertiesPanel from "./components/canvas/PropertiesPanel.jsx";
+import { useStore } from "./store/useStore.js";
+import "./App.css";
 
-function App() {
+export default function App() {
+  const deleteSelected = useStore((state) => state.deleteSelected);
+  const clearSelection = useStore((state) => state.clearSelection);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === "Delete" || e.key === "Backspace") {
+        deleteSelected();
+      }
+      if (e.key === "Escape") {
+        clearSelection();
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [deleteSelected, clearSelection]);
+
   return (
-    <div className="h-screen w-screen overflow-hidden flex bg-[#f3f4f6]">
-      <Toolbar />
-      
-      <main className="flex-1 relative flex items-center justify-center p-10">
-        <div className="bg-white shadow-xl rounded-sm">
-           <DesignerCanvas />
-        </div>
-      </main>
-
-      <aside className="w-72 bg-white border-l shadow-sm flex flex-col">
+    <div className="app-layout">
+      <ToolBar />
+      <div className="workspace">
+        <DesignerCanvas />
         <PropertiesPanel />
-        {/* We can put the JSON preview here later */}
-      </aside>
+      </div>
     </div>
   );
 }

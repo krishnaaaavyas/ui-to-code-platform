@@ -1,42 +1,87 @@
-import React from 'react';
-import { useStore } from '../../store/useStore';
+import { useMemo } from "react";
+import { useStore } from "../../store/useStore.js";
 
-const PropertiesPanel = () => {
-  const { selectedId, elements, updateElement, removeElement } = useStore();
-  const selectedElement = elements.find(el => el.id === selectedId);
+export default function PropertiesPanel() {
+  const elements = useStore((state) => state.elements);
+  const selectedId = useStore((state) => state.selectedId);
+  const updateElement = useStore((state) => state.updateElement);
+  const deleteSelected = useStore((state) => state.deleteSelected);
 
-  if (!selectedElement) return <div className="p-4 text-gray-400 italic">Select an item to edit properties</div>;
+  const selectedElement = useMemo(
+    () => elements.find((el) => el.id === selectedId),
+    [elements, selectedId]
+  );
+
+  if (!selectedElement) {
+    return (
+      <aside className="properties-panel empty">
+        <h3>Properties</h3>
+        <p>Select an item to edit its properties.</p>
+      </aside>
+    );
+  }
+
+  const onChange = (key, value) => {
+    updateElement(selectedId, { [key]: value });
+  };
 
   return (
-    <div className="p-4 flex flex-col gap-6">
-      <h3 className="font-bold text-sm uppercase tracking-wider text-gray-500">Properties</h3>
-      
-      <div>
-        <label className="block text-xs mb-2">Fill Color</label>
-        <input 
-          type="color" 
-          value={selectedElement.fill}
-          onChange={(e) => updateElement(selectedId, { fill: e.target.value })}
-          className="w-full h-10 rounded cursor-pointer"
-        />
+    <aside className="properties-panel">
+      <h3>Properties</h3>
+
+      <div className="field">
+        <label>Type</label>
+        <input value={selectedElement.type} disabled />
       </div>
 
-      <div>
-        <label className="block text-xs mb-2">Border Color</label>
-        <input 
-          type="color" 
-          value={selectedElement.stroke}
-          onChange={(e) => updateElement(selectedId, { stroke: e.target.value })}
-          className="w-full h-10 rounded cursor-pointer"
-        />
-      </div>
+      {"text" in selectedElement && (
+        <div className="field">
+          <label>Text</label>
+          <input
+            value={selectedElement.text}
+            onChange={(e) => onChange("text", e.target.value)}
+          />
+        </div>
+      )}
 
-      <button 
-        onClick={() => removeElement(selectedId)}
-        className="mt-4 bg-red-50 text-red-600 p-2 rounded hover:bg-red-100 transition"
-      >
-        Delete Element
+      {"fill" in selectedElement && (
+        <div className="field">
+          <label>Fill</label>
+          <input
+            type="color"
+            value={selectedElement.fill || "#000000"}
+            onChange={(e) => onChange("fill", e.target.value)}
+          />
+        </div>
+      )}
+
+      {"stroke" in selectedElement && (
+        <div className="field">
+          <label>Stroke</label>
+          <input
+            type="color"
+            value={selectedElement.stroke || "#000000"}
+            onChange={(e) => onChange("stroke", e.target.value)}
+          />
+        </div>
+      )}
+
+      {"strokeWidth" in selectedElement && (
+        <div className="field">
+          <label>Stroke width</label>
+          <input
+            type="range"
+            min="1"
+            max="12"
+            value={selectedElement.strokeWidth || 1}
+            onChange={(e) => onChange("strokeWidth", Number(e.target.value))}
+          />
+        </div>
+      )}
+
+      <button className="delete-btn" onClick={deleteSelected}>
+        Delete element
       </button>
-    </div>
+    </aside>
   );
-};
+}

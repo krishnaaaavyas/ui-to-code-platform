@@ -1,57 +1,67 @@
-import React, { useState } from 'react';
-import { useStore } from '../store/useStore';
-import { 
-  MousePointer2, Square, Circle as CircleIcon, 
-  Type, Pencil, Eraser, ChevronLeft, ChevronRight, Trash2 
-} from 'lucide-react';
+import { useStore } from "../../store/useStore";
 
-const Toolbar = () => {
-  const [minimized, setMinimized] = useState(false);
-  const { tool, setTool, color, setColor, deleteElement, selectedId } = useStore();
+const tools = [
+  { key: "select", label: "Select" },
+  { key: "rect", label: "Rect" },
+  { key: "circle", label: "Circle" },
+  { key: "text", label: "Text" },
+  { key: "pen", label: "Pen" },
+];
 
-  const tools = [
-    { id: 'select', icon: <MousePointer2 size={20}/>, label: 'Select' },
-    { id: 'rectangle', icon: <Square size={20}/>, label: 'Square' },
-    { id: 'circle', icon: <CircleIcon size={20}/>, label: 'Circle' },
-    { id: 'text', icon: <Type size={20}/>, label: 'Text' },
-    { id: 'pen', icon: <Pencil size={20}/>, label: 'Draw' },
-  ];
+export default function ToolBar() {
+  const tool = useStore((state) => state.tool);
+  const setTool = useStore((state) => state.setTool);
+  const fill = useStore((state) => state.fill);
+  const stroke = useStore((state) => state.stroke);
+  const strokeWidth = useStore((state) => state.strokeWidth);
+  const setFill = useStore((state) => state.setFill);
+  const setStroke = useStore((state) => state.setStroke);
+  const setStrokeWidth = useStore((state) => state.setStrokeWidth);
 
   return (
-    <div className={`fixed left-4 top-1/2 -translate-y-1/2 bg-white border shadow-2xl rounded-2xl transition-all duration-300 flex flex-col p-2 gap-2 ${minimized ? 'w-12' : 'w-16'}`}>
-      <button onClick={() => setMinimized(!minimized)} className="p-2 hover:bg-gray-100 rounded-lg self-center">
-        {minimized ? <ChevronRight size={16}/> : <ChevronLeft size={16}/>}
-      </button>
-      
-      {!minimized && (
-        <>
-          <div className="h-[1px] bg-gray-200 mx-2" />
-          {tools.map((t) => (
-            <button
-              key={t.id}
-              onClick={() => setTool(t.id)}
-              className={`p-3 rounded-xl flex items-center justify-center transition ${tool === t.id ? 'bg-blue-600 text-white shadow-lg' : 'hover:bg-gray-100 text-gray-600'}`}
-              title={t.label}
-            >
-              {t.icon}
-            </button>
-          ))}
-          <div className="h-[1px] bg-gray-200 mx-2" />
-          <input 
-            type="color" 
-            value={color} 
-            onChange={(e) => setColor(e.target.value)}
-            className="w-10 h-10 p-0 border-none bg-transparent cursor-pointer rounded-full overflow-hidden"
+    <div className="toolbar">
+      <div className="toolbar-group">
+        {tools.map((item) => (
+          <button
+            key={item.key}
+            className={tool === item.key ? "tool-btn active" : "tool-btn"}
+            onClick={() => setTool(item.key)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div className="toolbar-group colors">
+        <label>
+          Fill
+          <input
+            type="color"
+            value={fill}
+            onChange={(e) => setFill(e.target.value)}
           />
-          {selectedId && (
-            <button onClick={() => deleteElement(selectedId)} className="p-3 text-red-500 hover:bg-red-50 rounded-xl">
-              <Trash2 size={20} />
-            </button>
-          )}
-        </>
-      )}
+        </label>
+
+        <label>
+          Stroke
+          <input
+            type="color"
+            value={stroke}
+            onChange={(e) => setStroke(e.target.value)}
+          />
+        </label>
+
+        <label>
+          Width
+          <input
+            type="range"
+            min="1"
+            max="12"
+            value={strokeWidth}
+            onChange={(e) => setStrokeWidth(Number(e.target.value))}
+          />
+        </label>
+      </div>
     </div>
   );
-};
-
-export default Toolbar;
+}
