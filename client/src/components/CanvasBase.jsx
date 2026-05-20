@@ -5,8 +5,8 @@ import SideMenu from "./SideMenu";
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
 const SCALE_STEP = 1.12;
-const BOARD_WIDTH = 2200;
-const BOARD_HEIGHT = 1400;
+const MIN_BOARD_WIDTH = 600;
+const MIN_BOARD_HEIGHT = 400;
 
 function clamp(value, min, max) {
   return Math.max(min, Math.min(max, value));
@@ -31,18 +31,14 @@ function CanvasBase() {
   const stageRef = useRef(null);
   const lastPinchDistanceRef = useRef(0);
 
+  const [menuCollapsed, setMenuCollapsed] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
+  const [boardSize, setBoardSize] = useState({ width: 2200, height: 1400 });
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
   useEffect(() => {
     if (!boardRef.current) return;
-
-    const centerBoard = (width, height, nextScale = scale) => {
-      const x = (width - BOARD_WIDTH * nextScale) / 2;
-      const y = (height - BOARD_HEIGHT * nextScale) / 2;
-      return { x, y };
-    };
 
     const updateSize = () => {
       const { clientWidth, clientHeight } = boardRef.current;
@@ -50,7 +46,6 @@ function CanvasBase() {
         width: clientWidth,
         height: clientHeight,
       });
-      setPosition(centerBoard(clientWidth, clientHeight, scale));
     };
 
     updateSize();
@@ -62,7 +57,16 @@ function CanvasBase() {
     resizeObserver.observe(boardRef.current);
 
     return () => resizeObserver.disconnect();
-  }, [scale]);
+  }, []);
+
+  useEffect(() => {
+    if (!stageSize.width || !stageSize.height) return;
+
+    const centeredX = (stageSize.width - boardSize.width * scale) / 2;
+    const centeredY = (stageSize.height - boardSize.height * scale) / 2;
+
+    setPosition({ x: centeredX, y: centeredY });
+  }, [stageSize.width, stageSize.height, boardSize.width, boardSize.height]);
 
   const zoomAtPoint = (pointer, nextScale) => {
     const oldScale = scale;
@@ -127,45 +131,58 @@ function CanvasBase() {
   };
 
   const handleZoomIn = () => {
-    const pointer = {
+    const centerPoint = {
       x: stageSize.width / 2,
       y: stageSize.height / 2,
     };
 
     const nextScale = clamp(scale * SCALE_STEP, MIN_SCALE, MAX_SCALE);
-    zoomAtPoint(pointer, nextScale);
+    zoomAtPoint(centerPoint, nextScale);
   };
 
   const handleZoomOut = () => {
-    const pointer = {
+    const centerPoint = {
       x: stageSize.width / 2,
       y: stageSize.height / 2,
     };
 
     const nextScale = clamp(scale / SCALE_STEP, MIN_SCALE, MAX_SCALE);
-    zoomAtPoint(pointer, nextScale);
+    zoomAtPoint(centerPoint, nextScale);
+  };
+
+  const handleDragEnd = (e) => {
+    setPosition({
+      x: e.target.x(),
+      y: e.target.y(),
+    });
+  };
+
+  const updateBoardWidth = (value) => {
+    const nextWidth = clamp(value || MIN_BOARD_WIDTH, MIN_BOARD_WIDTH, 5000);
+    setBoardSize((prev) => ({
+      ...prev,
+      width: nextWidth,
+    }));
+  };
+
+  const updateBoardHeight = (value) => {
+    const nextHeight = clamp(value || MIN_BOARD_HEIGHT, MIN_BOARD_HEIGHT, 5000);
+    setBoardSize((prev) => ({
+      ...prev,
+      height: nextHeight,
+    }));
   };
 
   return (
     <section className="canvas-base">
-      <div className="canvas-base__header">
-        <div className="canvas-base__title">
-          <h1>Canvas</h1>
-          <p>Zoomable whiteboard base</p>
-        </div>
-
-        <div className="canvas-base__controls">
-          <button type="button" className="canvas-btn">
-            Minimise
-          </button>
-          <button type="button" className="canvas-btn canvas-btn--primary">
-            Maximise
-          </button>
-        </div>
-      </div>
-
       <div className="canvas-workspace">
-        <SideMenu />
+        <SideMenu
+          collapsed={menuCollapsed}
+          onToggle={() => setMenuCollapsed((prev) => !prev)}
+          boardSize={boardSize}
+          onBoardWidthChange={updateBoardWidth}
+          onBoardHeightChange={updateBoardHeight}
+        />
 
         <div ref={boardRef} className="canvas-base__board">
           {stageSize.width > 0 && stageSize.height > 0 && (
@@ -177,6 +194,8 @@ function CanvasBase() {
               y={position.y}
               scaleX={scale}
               scaleY={scale}
+              draggable
+              onDragEnd={handleDragEnd}
               onWheel={handleWheel}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleTouchEnd}
@@ -185,28 +204,29 @@ function CanvasBase() {
                 <Rect
                   x={0}
                   y={0}
-                  width={BOARD_WIDTH}
-                  height={BOARD_HEIGHT}
+                  width={boardSize.width}
+                  height={boardSize.height}
                   fill="#ffffff"
                   cornerRadius={24}
-                  shadowColor="rgba(15, 23, 42, 0.08)"
-                  shadowBlur={28}
-                  shadowOffset={{ x: 0, y: 10 }}
+                  shadowColor="rgba(15, 23, 42, 0.15)"
+                  shadowBlur={42}
+                  shadowOffset={{ x: 0, y: 16 }}
+                  shadowOpacity={0.8}
                 />
                 <Text
                   x={60}
                   y={60}
                   text="Whiteboard"
-                  fontSize={28}
+                  fontSize={32}
                   fontStyle="bold"
                   fill="#0f172a"
                 />
                 <Text
                   x={60}
-                  y={100}
-                  text="Zoom with mouse wheel, trackpad pinch, or the +/- controls."
-                  fontSize={16}
-                  fill="#64748b"
+                  y={110}
+                  text="Drag shapes • Add text • Change colors • Draw strokes • Manage layers"
+                  fontSize={13}
+                  fill="#475569"
                 />
               </Layer>
             </Stage>
