@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 const toolOptions = [
   "Shapes",
@@ -24,9 +24,7 @@ const strokeOptions = [
   { name: "Line", symbol: "—" },
 ];
 
-function ShapesPanel() {
-  const [selectedShape, setSelectedShape] = useState(null);
-
+function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedItem, onDeleteSelected, onChangeSelectedColor }) {
   return (
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Shapes</p>
@@ -34,27 +32,48 @@ function ShapesPanel() {
         {shapeOptions.map((shape) => (
           <button
             key={shape.name}
-            className={`shape-item ${selectedShape === shape.name ? "shape-item--active" : ""}`}
-            onClick={() => setSelectedShape(shape.name)}
-            title={shape.name}
-            draggable
-            onDragStart={(e) => {
-              e.dataTransfer.effectAllowed = "copy";
-              e.dataTransfer.setData("shapeType", shape.name);
+            className={`shape-item ${activeShape === shape.name ? "shape-item--active" : ""}`}
+            onClick={() => {
+              onChangeActiveShape(shape.name);
+              onAddShape(shape.name);
             }}
+            title={shape.name}
           >
             <span className="shape-item__symbol">{shape.symbol}</span>
             <span className="shape-item__name">{shape.name}</span>
           </button>
         ))}
       </div>
-      <p className="side-menu__panel-hint">Drag shapes onto the canvas</p>
+      {selectedItem && selectedItem.type === "shape" && (
+        <div className="shape-settings">
+          <div className="shape-settings__field">
+            <label>Shape color</label>
+            <input
+              type="color"
+              value={selectedItem.fill || "#2563eb"}
+              onChange={(e) => onChangeSelectedColor(e.target.value)}
+            />
+          </div>
+          <button className="shape-settings__delete" onClick={onDeleteSelected}>
+            Delete selected shape
+          </button>
+        </div>
+      )}
+      <p className="side-menu__panel-hint">Click a shape to add it, or select an existing shape to edit.</p>
     </div>
   );
 }
 
-function TextPanel() {
+function TextPanel({ onAddText }) {
   const [textInput, setTextInput] = useState("");
+
+  const handleAdd = () => {
+    const trimmed = textInput.trim();
+    if (trimmed) {
+      onAddText(trimmed);
+      setTextInput("");
+    }
+  };
 
   return (
     <div className="side-menu__panel">
@@ -67,40 +86,45 @@ function TextPanel() {
           onChange={(e) => setTextInput(e.target.value)}
           rows="4"
         />
-        <button className="text-btn" onClick={() => {
-          if (textInput.trim()) {
-            console.log("Add text to canvas:", textInput);
-            setTextInput("");
-          }
-        }}>
+        <button className="text-btn" onClick={handleAdd}>
           Add to Canvas
         </button>
       </div>
-      <p className="side-menu__panel-hint">Type text and click to add</p>
+      <p className="side-menu__panel-hint">Text boxes are movable and resizeable.</p>
     </div>
   );
 }
 
-function BackgroundPanel({ onBackgroundChange }) {
-  const [color, setColor] = useState({ r: 255, g: 255, b: 255 });
+function parseRgb(rgb) {
+  const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
+  if (!match) return { r: 255, g: 255, b: 255 };
+  return { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]) };
+}
+
+function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
+  const [color, setColor] = useState(parseRgb(backgroundColor));
+
+  useEffect(() => {
+    setColor(parseRgb(backgroundColor));
+  }, [backgroundColor]);
 
   const handleColorChange = (channel, value) => {
     const newColor = { ...color, [channel]: Math.max(0, Math.min(255, value)) };
     setColor(newColor);
     const rgbString = `rgb(${newColor.r}, ${newColor.g}, ${newColor.b})`;
-    onBackgroundChange?.(rgbString);
+    onBackgroundChange(rgbString);
   };
 
   const rgbString = `rgb(${color.r}, ${color.g}, ${color.b})`;
 
   return (
     <div className="side-menu__panel">
-      <p className="side-menu__panel-title">Background Color</p>
+      <p className="side-menu__panel-title">Background</p>
       <div className="color-preview" style={{ backgroundColor: rgbString }} />
-      
+
       <div className="color-input-group">
         <label className="color-input-label">
-          <span>Red</span>
+          <span>R</span>
           <input
             type="range"
             min="0"
@@ -113,7 +137,7 @@ function BackgroundPanel({ onBackgroundChange }) {
         </label>
 
         <label className="color-input-label">
-          <span>Green</span>
+          <span>G</span>
           <input
             type="range"
             min="0"
@@ -126,7 +150,7 @@ function BackgroundPanel({ onBackgroundChange }) {
         </label>
 
         <label className="color-input-label">
-          <span>Blue</span>
+          <span>B</span>
           <input
             type="range"
             min="0"
@@ -138,7 +162,7 @@ function BackgroundPanel({ onBackgroundChange }) {
           <span className="color-value">{color.b}</span>
         </label>
       </div>
-      
+
       <div className="color-display">
         <p className="color-code">{rgbString}</p>
       </div>
@@ -146,9 +170,7 @@ function BackgroundPanel({ onBackgroundChange }) {
   );
 }
 
-function StrokePanel() {
-  const [selectedStroke, setSelectedStroke] = useState(null);
-
+function StrokePanel({ selectedStroke, onStrokeChange }) {
   return (
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Drawing Tools</p>
@@ -157,7 +179,7 @@ function StrokePanel() {
           <button
             key={stroke.name}
             className={`stroke-item ${selectedStroke === stroke.name ? "stroke-item--active" : ""}`}
-            onClick={() => setSelectedStroke(stroke.name)}
+            onClick={() => onStrokeChange(stroke.name)}
             title={stroke.name}
           >
             <span className="stroke-item__symbol">{stroke.symbol}</span>
@@ -165,7 +187,7 @@ function StrokePanel() {
           </button>
         ))}
       </div>
-      <p className="side-menu__panel-hint">Select a drawing tool</p>
+      <p className="side-menu__panel-hint">Select a drawing tool, then draw directly on the whiteboard.</p>
     </div>
   );
 }
@@ -179,7 +201,7 @@ function LayersPanel() {
   const addLayer = () => {
     if (newLayerName.trim()) {
       const newLayer = {
-        id: Math.max(...layers.map(l => l.id), 0) + 1,
+        id: Math.max(...layers.map((l) => l.id), 0) + 1,
         name: newLayerName,
         visible: true,
       };
@@ -190,20 +212,18 @@ function LayersPanel() {
 
   const removeLayer = (id) => {
     if (layers.length > 1) {
-      setLayers(layers.filter(l => l.id !== id));
+      setLayers(layers.filter((l) => l.id !== id));
     }
   };
 
   const toggleLayerVisibility = (id) => {
-    setLayers(layers.map(l =>
-      l.id === id ? { ...l, visible: !l.visible } : l
-    ));
+    setLayers(layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
   };
 
   return (
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Layers</p>
-      
+
       <div className="layer-input-group">
         <input
           type="text"
@@ -215,7 +235,9 @@ function LayersPanel() {
             if (e.key === "Enter") addLayer();
           }}
         />
-        <button className="layer-btn" onClick={addLayer}>+ Add</button>
+        <button className="layer-btn" onClick={addLayer}>
+          + Add
+        </button>
       </div>
 
       <div className="layers-list">
@@ -244,26 +266,51 @@ function LayersPanel() {
   );
 }
 
-
 function SideMenu({
   collapsed,
   onToggle,
   boardSize,
   onBoardWidthChange,
   onBoardHeightChange,
+  activeTool,
+  onToolChange,
+  onAddShape,
+  onAddText,
+  backgroundColor,
+  onBackgroundChange,
+  selectedStroke,
+  onStrokeChange,
+  selectedItem,
+  onDeleteSelected,
+  onChangeSelectedColor,
 }) {
-  const [activeTool, setActiveTool] = useState(toolOptions[0]);
+  const [activeShape, setActiveShape] = useState(null);
+
+  useEffect(() => {
+    if (activeTool !== "Shapes") {
+      setActiveShape(null);
+    }
+  }, [activeTool]);
 
   const renderToolPanel = () => {
     switch (activeTool) {
       case "Shapes":
-        return <ShapesPanel />;
+        return (
+          <ShapesPanel
+            activeShape={activeShape}
+            onAddShape={onAddShape}
+            onChangeActiveShape={setActiveShape}
+            selectedItem={selectedItem}
+            onDeleteSelected={onDeleteSelected}
+            onChangeSelectedColor={onChangeSelectedColor}
+          />
+        );
       case "Text":
-        return <TextPanel />;
+        return <TextPanel onAddText={onAddText} />;
       case "Background":
-        return <BackgroundPanel />;
+        return <BackgroundPanel backgroundColor={backgroundColor} onBackgroundChange={onBackgroundChange} />;
       case "Stroke":
-        return <StrokePanel />;
+        return <StrokePanel selectedStroke={selectedStroke} onStrokeChange={onStrokeChange} />;
       case "Layers":
         return <LayersPanel />;
       default:
@@ -294,19 +341,15 @@ function SideMenu({
                 <button
                   key={tool}
                   type="button"
-                  className={`side-menu__item ${
-                    activeTool === tool ? "side-menu__item--active" : ""
-                  }`}
-                  onClick={() => setActiveTool(tool)}
+                  className={`side-menu__item ${activeTool === tool ? "side-menu__item--active" : ""}`}
+                  onClick={() => onToolChange(tool)}
                 >
                   {tool}
                 </button>
               ))}
             </div>
 
-            <div className="side-menu__content">
-              {renderToolPanel()}
-            </div>
+            <div className="side-menu__content">{renderToolPanel()}</div>
           </>
         )}
       </div>

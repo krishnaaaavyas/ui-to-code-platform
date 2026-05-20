@@ -15,24 +15,24 @@ body {
   background:
     radial-gradient(circle at top left, #f8fbff 0%, #eef2f7 38%, #e5e7eb 100%);
   color: #111827;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .app {
   width: 100%;
-  height: 100%;
-  overflow: hidden;
+  min-height: 100vh;
+  overflow: auto;
 }
 
 .canvas-base {
   width: 100%;
-  height: 100vh;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   background: transparent;
   padding: 16px;
   gap: 12px;
-  overflow: hidden;
+  overflow: auto;
 }
 
 .canvas-base__header {
@@ -94,18 +94,46 @@ body {
   overflow: hidden;
 }
 
+.stage{
+  background-color: #00000033;
+}
+
+.layer{
+  background-color: white;
+}
+
 .side-menu {
-  width: 240px;
+  width: 280px;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   padding: 12px 10px;
   border-radius: 24px;
-  background: rgba(255, 255, 255, 0.72);
+  background: rgba(255, 255, 255, 0.92);
   border: 1px solid rgba(148, 163, 184, 0.22);
   box-shadow: 0 16px 36px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(12px);
+  backdrop-filter: blur(18px);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+}
+
+.side-menu__content {
+  max-height: calc(100vh - 320px);
+  overflow-y: auto;
+}
+
+.side-menu__content::-webkit-scrollbar {
+  width: 6px;
+}
+
+.side-menu__content::-webkit-scrollbar-thumb {
+  background: rgba(15, 23, 42, 0.16);
+  border-radius: 10px;
+}
+
+.side-menu__content::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.04);
 }
 
 .side-menu__header {
@@ -160,8 +188,9 @@ body {
   background: linear-gradient(180deg, #eff6ff, #dbeafe);
   color: #1d4ed8;
   box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.9),
-    0 10px 20px rgba(37, 99, 235, 0.12);
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    0 12px 28px rgba(37, 99, 235, 0.18);
+  transform: translateY(-1px);
 }
 
 .side-menu__toggle {
@@ -208,8 +237,10 @@ body {
 }
 
 .side-menu--collapsed {
-  width: 70px;
+  width: 78px;
   padding: 14px 10px;
+  background: linear-gradient(180deg, rgba(255,255,255,0.96), rgba(248,250,252,0.98));
+  border-color: rgba(59,130,246,0.24);
 }
 
 .side-menu--collapsed .side-menu__label,
@@ -223,8 +254,11 @@ body {
 
 .side-menu--collapsed .side-menu__toggle {
   width: 100%;
-  height: 46px;
+  height: 48px;
   font-size: 24px;
+  background: linear-gradient(135deg, #2563eb, #3b82f6);
+  color: white;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.24);
 }
 
 /* Side Menu Content & Panels */
@@ -320,7 +354,7 @@ body {
 .shapes-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 8px;
 }
 
@@ -330,11 +364,11 @@ body {
   align-items: center;
   justify-content: center;
   gap: 4px;
-  padding: 12px 8px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.5);
-  cursor: grab;
+  padding: 14px 10px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
   transition: all 0.18s ease;
 }
 
@@ -347,7 +381,7 @@ body {
 .shape-item--active {
   border-color: #2563eb;
   background: linear-gradient(180deg, #eff6ff, #dbeafe);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9), 0 4px 12px rgba(37, 99, 235, 0.15);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.95), 0 10px 22px rgba(37, 99, 235, 0.16);
 }
 
 .shape-item:active {
