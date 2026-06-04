@@ -375,6 +375,79 @@ export const useStore = create((set, get) => ({
       return pushState(state, { backgroundColor: color });
     }),
 
+  bringToFront: (id) =>
+    set((state) => {
+      const idx = state.elements.findIndex((el) => el.id === id);
+      if (idx === -1) return {};
+      const nextElements = [...state.elements];
+      const [item] = nextElements.splice(idx, 1);
+      nextElements.push(item);
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "canvas.update", payload: { elements: nextElements } }
+        });
+      }
+      return pushState(state, { elements: nextElements });
+    }),
+
+  sendToBack: (id) =>
+    set((state) => {
+      const idx = state.elements.findIndex((el) => el.id === id);
+      if (idx === -1) return {};
+      const nextElements = [...state.elements];
+      const [item] = nextElements.splice(idx, 1);
+      nextElements.unshift(item);
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "canvas.update", payload: { elements: nextElements } }
+        });
+      }
+      return pushState(state, { elements: nextElements });
+    }),
+
+  centerElement: (id, direction) =>
+    set((state) => {
+      const element = state.elements.find((el) => el.id === id);
+      if (!element) return {};
+      const patch = {};
+      
+      if (direction === "horizontal") {
+        const width = element.width || (element.radius ? element.radius * 2 : 120);
+        patch.x = Math.round((state.boardWidth - width) / 2);
+      } else if (direction === "vertical") {
+        const height = element.height || (element.radius ? element.radius * 2 : 120);
+        patch.y = Math.round((state.boardHeight - height) / 2);
+      }
+
+      const nextElements = state.elements.map((el) =>
+        el.id === id ? { ...el, ...patch } : el
+      );
+
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.update", payload: { id, patch } }
+        });
+      }
+      return pushState(state, { elements: nextElements });
+    }),
+
+  duplicateElement: (id) => {
+    const state = get();
+    const element = state.elements.find((el) => el.id === id);
+    if (!element) return;
+    const duplicated = {
+      ...element,
+      id: `element-${Date.now()}`,
+      x: element.x + 30,
+      y: element.y + 30,
+      name: `${element.name || element.type} (Copy)`,
+    };
+    state.addElement(duplicated);
+  },
+
   // Remote elements & board actions (Socket.IO updates)
   remoteAddElement: (element) =>
     set((state) => {

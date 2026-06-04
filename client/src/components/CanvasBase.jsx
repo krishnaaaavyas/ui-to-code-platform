@@ -119,6 +119,41 @@ function CanvasBase() {
   const [collaborators, setCollaborators] = useState([]);
   const lastCursorEmitRef = useRef(0);
 
+  // Canvas panning state
+  const [spacePressed, setSpacePressed] = useState(false);
+  const [middleMouseDown, setMiddleMouseDown] = useState(false);
+
+  // Track spacebar keypresses globally for canvas panning
+  useEffect(() => {
+    const handleKeyDownGlobal = (e) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (
+        activeEl.tagName === "INPUT" || 
+        activeEl.tagName === "TEXTAREA" || 
+        activeEl.isContentEditable
+      );
+      if (isInput) return;
+
+      if (e.key === " ") {
+        e.preventDefault();
+        setSpacePressed(true);
+      }
+    };
+
+    const handleKeyUpGlobal = (e) => {
+      if (e.key === " ") {
+        setSpacePressed(false);
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDownGlobal);
+    window.addEventListener("keyup", handleKeyUpGlobal);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDownGlobal);
+      window.removeEventListener("keyup", handleKeyUpGlobal);
+    };
+  }, []);
+
   // Restore active session on mount
   useEffect(() => {
     const restoreSession = async () => {
@@ -375,6 +410,12 @@ function CanvasBase() {
             op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
           });
         }
+      } else if (cmdOrCtrl && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        if (userRole === "viewer") return;
+        if (selectedElementId) {
+          useStore.getState().duplicateElement(selectedElementId);
+        }
       } else if (e.key === "Delete" || e.key === "Backspace") {
         if (userRole === "viewer") return;
         if (selectedElementId) {
@@ -386,6 +427,23 @@ function CanvasBase() {
         selectElement(null);
         setDraftElement(null);
         setIsDrawing(false);
+      } else if (!cmdOrCtrl) {
+        if (e.key.toLowerCase() === "v") {
+          e.preventDefault();
+          useStore.getState().setActiveTool("Shapes");
+        } else if (e.key.toLowerCase() === "t") {
+          e.preventDefault();
+          useStore.getState().setActiveTool("Text");
+        } else if (e.key.toLowerCase() === "p") {
+          e.preventDefault();
+          useStore.getState().setActiveTool("Stroke");
+        } else if (e.key.toLowerCase() === "b") {
+          e.preventDefault();
+          useStore.getState().setActiveTool("Background");
+        } else if (e.key.toLowerCase() === "d") {
+          e.preventDefault();
+          useStore.getState().setActiveTool("Designs");
+        }
       }
     };
 
@@ -394,6 +452,96 @@ function CanvasBase() {
       window.removeEventListener("keydown", handleKeyDown);
     };
   }, [selectedElementId, deleteElement, selectElement, setDraftElement, setIsDrawing, userRole, documentId]);
+
+  const exportToPNG = () => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const originalSelected = selectedElementId;
+    selectElement(null);
+    
+    setTimeout(() => {
+      const dataUrl = stage.toDataURL({ pixelRatio: 2 });
+      const link = document.createElement("a");
+      link.download = `${documentName || "whiteboard"}.png`;
+      link.href = dataUrl;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      if (originalSelected) selectElement(originalSelected);
+    }, 100);
+  };
+
+  const exportToJSON = () => {
+    const docData = serializeDocument();
+    const payload = {
+      name: documentName,
+      data: docData,
+      version: documentVersion,
+    };
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+      JSON.stringify(payload, null, 2)
+    )}`;
+    const link = document.createElement("a");
+    link.download = `${documentName || "whiteboard"}.json`;
+    link.href = jsonString;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImportJSON = (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const parsed = JSON.parse(event.target.result);
+        if (!parsed || !parsed.data || !Array.isArray(parsed.data.elements)) {
+          alert("Invalid JSON format. Make sure it is a valid whiteboard design file.");
+          return;
+        }
+
+        if (documentId) {
+          useStore.setState({
+            documentName: parsed.name || documentName,
+            boardWidth: parsed.data.boardWidth || boardWidth,
+            boardHeight: parsed.data.boardHeight || boardHeight,
+            backgroundColor: parsed.data.backgroundColor || boardColor,
+            elements: parsed.data.elements,
+            isDirty: true,
+            saveStatus: "idle",
+          });
+          if (socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit("element.op", {
+              documentId,
+              op: {
+                type: "canvas.update",
+                payload: {
+                  boardWidth: parsed.data.boardWidth || boardWidth,
+                  boardHeight: parsed.data.boardHeight || boardHeight,
+                  backgroundColor: parsed.data.backgroundColor || boardColor,
+                  elements: parsed.data.elements,
+                },
+              },
+            });
+          }
+        } else {
+          useStore.setState({
+            documentName: parsed.name || "Imported Design",
+            boardWidth: parsed.data.boardWidth || boardWidth,
+            boardHeight: parsed.data.boardHeight || boardHeight,
+            backgroundColor: parsed.data.backgroundColor || boardColor,
+            elements: parsed.data.elements,
+            isDirty: false,
+          });
+        }
+      } catch (err) {
+        alert("Failed to parse JSON file: " + err.message);
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const zoomAtPoint = (pointer, nextScale) => {
     const oldScale = scale;
@@ -628,6 +776,7 @@ function CanvasBase() {
   };
 
   const handleMouseUp = () => {
+    setMiddleMouseDown(false);
     if (draftElement) {
       addElement(draftElement);
       setDraftElement(null);
@@ -949,6 +1098,9 @@ function CanvasBase() {
             if (!selectedElementId) return;
             updateItem(selectedElementId, { fill: color, stroke: color });
           }}
+          onExportPNG={exportToPNG}
+          onExportJSON={exportToJSON}
+          onImportJSON={handleImportJSON}
         />
 
         <div ref={boardRef} className="canvas-base__board">
@@ -1061,14 +1213,33 @@ function CanvasBase() {
               y={position.y}
               scaleX={scale}
               scaleY={scale}
-              draggable={false}
+              draggable={spacePressed || middleMouseDown}
+              style={{ cursor: spacePressed ? (middleMouseDown ? "grabbing" : "grab") : "default" }}
               onWheel={handleWheel}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleStageTouchEnd}
-              onMouseDown={handleStageMouseDown}
+              onMouseDown={(e) => {
+                if (e.evt.button === 1) {
+                  e.evt.preventDefault();
+                  setMiddleMouseDown(true);
+                } else {
+                  handleStageMouseDown(e);
+                }
+              }}
               onTouchStart={handleStageMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
+              onDragMove={(e) => {
+                if (e.target === stageRef.current) {
+                  setPosition({ x: e.target.x(), y: e.target.y() });
+                }
+              }}
+              onDragEnd={(e) => {
+                if (e.target === stageRef.current) {
+                  setPosition({ x: e.target.x(), y: e.target.y() });
+                }
+                setMiddleMouseDown(false);
+              }}
             >
               <Layer>
                 <Rect

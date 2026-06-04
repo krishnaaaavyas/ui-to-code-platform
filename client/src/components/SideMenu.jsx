@@ -148,11 +148,13 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
         </label>
       </div>
 
-      {selectedItem && ["rect", "rectangle", "circle", "triangle", "diamond", "line", "image"].includes(selectedItem.type) && (
-        <div className="shape-settings">
-          {selectedItem.type !== "image" && (
-            <div className="shape-settings__field">
-              <label>Shape color</label>
+      {selectedItem && (
+        <div className="shape-settings" style={{ marginTop: "16px", padding: "12px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15,23,42,0.2)" }}>
+          <p style={{ margin: "0 0 8px 0", fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase" }}>Selection Settings</p>
+          
+          {["rect", "rectangle", "circle", "triangle", "diamond", "line"].includes(selectedItem.type) && (
+            <div className="shape-settings__field" style={{ marginBottom: "10px" }}>
+              <label>Fill color</label>
               <input
                 type="color"
                 disabled={userRole === "viewer"}
@@ -161,9 +163,61 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
               />
             </div>
           )}
-          <button className="shape-settings__delete" disabled={userRole === "viewer"} onClick={onDeleteSelected}>
-            Delete selected {selectedItem.type === "image" ? "image" : "shape"}
-          </button>
+
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
+            <button
+              type="button"
+              disabled={userRole === "viewer"}
+              onClick={() => useStore.getState().bringToFront(selectedItem.id)}
+              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+            >
+              Bring Front
+            </button>
+            <button
+              type="button"
+              disabled={userRole === "viewer"}
+              onClick={() => useStore.getState().sendToBack(selectedItem.id)}
+              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+            >
+              Send Back
+            </button>
+            <button
+              type="button"
+              disabled={userRole === "viewer"}
+              onClick={() => useStore.getState().centerElement(selectedItem.id, "horizontal")}
+              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+            >
+              Center X
+            </button>
+            <button
+              type="button"
+              disabled={userRole === "viewer"}
+              onClick={() => useStore.getState().centerElement(selectedItem.id, "vertical")}
+              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+            >
+              Center Y
+            </button>
+          </div>
+
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              disabled={userRole === "viewer"}
+              onClick={() => useStore.getState().duplicateElement(selectedItem.id)}
+              style={{ flex: 1, padding: "6px 12px", fontSize: "11px", background: "#3b82f6", border: "none", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+            >
+              Duplicate
+            </button>
+            <button
+              type="button"
+              className="shape-settings__delete"
+              disabled={userRole === "viewer"}
+              onClick={onDeleteSelected}
+              style={{ flex: 1, padding: "6px 12px", fontSize: "11px", background: "#ef4444", border: "none", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+            >
+              Delete
+            </button>
+          </div>
         </div>
       )}
       <p className="side-menu__panel-hint">Click a shape/upload an image to add it, or select an existing element to edit.</p>
@@ -434,7 +488,7 @@ function LayersPanel() {
   );
 }
 
-function DesignsPanel() {
+function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
   const documentId = useStore((state) => state.documentId);
   const documentName = useStore((state) => state.documentName);
   const documentVersion = useStore((state) => state.documentVersion);
@@ -912,6 +966,51 @@ function DesignsPanel() {
           )}
         </div>
       )}
+
+      {/* Export & Import Section */}
+      <div className="export-import-section" style={{ marginTop: "16px", padding: "12px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15,23,42,0.2)" }}>
+        <p className="side-menu__panel-title" style={{ marginTop: 0 }}>Export & Import</p>
+        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px" }}>
+            <button
+              type="button"
+              onClick={onExportPNG}
+              style={{ flex: 1, padding: "8px 12px", fontSize: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+            >
+              📷 Export PNG
+            </button>
+            <button
+              type="button"
+              onClick={onExportJSON}
+              style={{ flex: 1, padding: "8px 12px", fontSize: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+            >
+              📥 Export JSON
+            </button>
+          </div>
+          
+          <label
+            style={{
+              display: "block",
+              padding: "8px 12px",
+              fontSize: "12px",
+              background: "#3b82f6",
+              borderRadius: "6px",
+              color: "#fff",
+              fontWeight: "600",
+              cursor: "pointer",
+              textAlign: "center"
+            }}
+          >
+            📤 Import JSON File
+            <input
+              type="file"
+              accept=".json"
+              onChange={onImportJSON}
+              style={{ display: "none" }}
+            />
+          </label>
+        </div>
+      </div>
     </div>
   );
 }
@@ -934,6 +1033,9 @@ function SideMenu({
   selectedItem,
   onDeleteSelected,
   onChangeSelectedColor,
+  onExportPNG,
+  onExportJSON,
+  onImportJSON,
 }) {
   const [activeShape, setActiveShape] = useState(null);
   const userRole = useStore((state) => state.userRole);
@@ -960,7 +1062,13 @@ function SideMenu({
       case "Layers":
         return <LayersPanel />;
       case "Designs":
-        return <DesignsPanel />;
+        return (
+          <DesignsPanel
+            onExportPNG={onExportPNG}
+            onExportJSON={onExportJSON}
+            onImportJSON={onImportJSON}
+          />
+        );
       default:
         return null;
     }
