@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
+import { useStore } from "../store/useStore";
 
 const toolOptions = [
   "Shapes",
@@ -44,7 +45,7 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
           </button>
         ))}
       </div>
-      {selectedItem && selectedItem.type === "shape" && (
+      {selectedItem && ["rect", "rectangle", "circle", "triangle", "diamond", "line"].includes(selectedItem.type) && (
         <div className="shape-settings">
           <div className="shape-settings__field">
             <label>Shape color</label>
@@ -102,15 +103,10 @@ function parseRgb(rgb) {
 }
 
 function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
-  const [color, setColor] = useState(parseRgb(backgroundColor));
-
-  useEffect(() => {
-    setColor(parseRgb(backgroundColor));
-  }, [backgroundColor]);
+  const color = parseRgb(backgroundColor);
 
   const handleColorChange = (channel, value) => {
     const newColor = { ...color, [channel]: Math.max(0, Math.min(255, value)) };
-    setColor(newColor);
     const rgbString = `rgb(${newColor.r}, ${newColor.g}, ${newColor.b})`;
     onBackgroundChange(rgbString);
   };
@@ -193,74 +189,127 @@ function StrokePanel({ selectedStroke, onStrokeChange }) {
 }
 
 function LayersPanel() {
-  const [layers, setLayers] = useState([
-    { id: 1, name: "Layer 1", visible: true },
-  ]);
-  const [newLayerName, setNewLayerName] = useState("");
+  const elements = useStore((state) => state.elements);
+  const selectedElementId = useStore((state) => state.selectedElementId);
+  const selectElement = useStore((state) => state.selectElement);
+  const deleteElement = useStore((state) => state.deleteElement);
+  const toggleElementVisibility = useStore((state) => state.toggleElementVisibility);
+  const toggleElementLocked = useStore((state) => state.toggleElementLocked);
+  const reorderElements = useStore((state) => state.reorderElements);
+  const renameElement = useStore((state) => state.renameElement);
+  const canUndo = useStore((state) => state.historyIndex > 0);
+  const canRedo = useStore((state) => state.historyIndex < state.history.length - 1);
+  const undo = useStore((state) => state.undo);
+  const redo = useStore((state) => state.redo);
 
-  const addLayer = () => {
-    if (newLayerName.trim()) {
-      const newLayer = {
-        id: Math.max(...layers.map((l) => l.id), 0) + 1,
-        name: newLayerName,
-        visible: true,
-      };
-      setLayers([newLayer, ...layers]);
-      setNewLayerName("");
-    }
-  };
+  const [editingId, setEditingId] = useState(null);
+  const [editName, setEditName] = useState("");
 
-  const removeLayer = (id) => {
-    if (layers.length > 1) {
-      setLayers(layers.filter((l) => l.id !== id));
-    }
-  };
+  const orderedElements = [...elements].slice().reverse();
 
-  const toggleLayerVisibility = (id) => {
-    setLayers(layers.map((l) => (l.id === id ? { ...l, visible: !l.visible } : l)));
+  const moveLayer = (realIndex, offset) => {
+    reorderElements(realIndex, realIndex + offset);
   };
 
   return (
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Layers</p>
 
-      <div className="layer-input-group">
-        <input
-          type="text"
-          className="layer-input"
-          placeholder="Layer name..."
-          value={newLayerName}
-          onChange={(e) => setNewLayerName(e.target.value)}
-          onKeyPress={(e) => {
-            if (e.key === "Enter") addLayer();
-          }}
-        />
-        <button className="layer-btn" onClick={addLayer}>
-          + Add
-        </button>
+      <div className="layers-list">
+        {orderedElements.map((item, index) => {
+          const realIndex = elements.length - 1 - index;
+          return (
+            <div key={item.id} className={`layer-item ${selectedElementId === item.id ? "layer-item--selected" : ""}`}>
+              <button
+                className="layer-visibility"
+                onClick={() => toggleElementVisibility(item.id)}
+                title={item.visible ? "Hide" : "Show"}
+              >
+                {item.visible ? "👁" : "🚫"}
+              </button>
+              <button
+                className="layer-lock"
+                onClick={() => toggleElementLocked(item.id)}
+                title={item.locked ? "Unlock" : "Lock"}
+              >
+                {item.locked ? "🔒" : "🔓"}
+              </button>
+              {editingId === item.id ? (
+                <input
+                  type="text"
+                  className="layer-name-input"
+                  value={editName}
+                  onChange={(e) => setEditName(e.target.value)}
+                  onBlur={() => {
+                    if (editName.trim()) {
+                      renameElement(item.id, editName.trim());
+                    }
+                    setEditingId(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      if (editName.trim()) {
+                        renameElement(item.id, editName.trim());
+                      }
+                      setEditingId(null);
+                    } else if (e.key === "Escape") {
+                      setEditingId(null);
+                    }
+                  }}
+                  autoFocus
+                />
+              ) : (
+                <button
+                  type="button"
+                  className="layer-name"
+                  onClick={() => selectElement(item.id)}
+                  onDoubleClick={() => {
+                    setEditingId(item.id);
+                    setEditName(item.name || item.type);
+                  }}
+                  title="Double click to rename"
+                >
+                  {item.name || item.type}
+                </button>
+              )}
+              <div className="layer-actions">
+                <button
+                  type="button"
+                  disabled={realIndex >= elements.length - 1}
+                  onClick={() => moveLayer(realIndex, 1)}
+                  title="Move layer up"
+                >
+                  ↑
+                </button>
+                <button
+                  type="button"
+                  disabled={realIndex <= 0}
+                  onClick={() => moveLayer(realIndex, -1)}
+                  title="Move layer down"
+                >
+                  ↓
+                </button>
+                <button
+                  type="button"
+                  className="layer-remove"
+                  onClick={() => deleteElement(item.id)}
+                  title="Delete layer"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      <div className="layers-list">
-        {layers.map((layer) => (
-          <div key={layer.id} className="layer-item">
-            <button
-              className="layer-visibility"
-              onClick={() => toggleLayerVisibility(layer.id)}
-              title={layer.visible ? "Hide" : "Show"}
-            >
-              {layer.visible ? "👁" : "🚫"}
-            </button>
-            <span className="layer-name">{layer.name}</span>
-            <button
-              className="layer-remove"
-              onClick={() => removeLayer(layer.id)}
-              title="Remove layer"
-              disabled={layers.length === 1}
-            >
-              ✕
-            </button>
-          </div>
-        ))}
+      <div className="layer-history-controls">
+        <button type="button" onClick={undo} disabled={!canUndo} className="layer-history-btn">
+          Undo
+        </button>
+        <button type="button" onClick={redo} disabled={!canRedo} className="layer-history-btn">
+          Redo
+        </button>
       </div>
     </div>
   );
@@ -269,7 +318,8 @@ function LayersPanel() {
 function SideMenu({
   collapsed,
   onToggle,
-  boardSize,
+  boardWidth,
+  boardHeight,
   onBoardWidthChange,
   onBoardHeightChange,
   activeTool,
@@ -285,12 +335,6 @@ function SideMenu({
   onChangeSelectedColor,
 }) {
   const [activeShape, setActiveShape] = useState(null);
-
-  useEffect(() => {
-    if (activeTool !== "Shapes") {
-      setActiveShape(null);
-    }
-  }, [activeTool]);
 
   const renderToolPanel = () => {
     switch (activeTool) {
@@ -342,7 +386,12 @@ function SideMenu({
                   key={tool}
                   type="button"
                   className={`side-menu__item ${activeTool === tool ? "side-menu__item--active" : ""}`}
-                  onClick={() => onToolChange(tool)}
+                  onClick={() => {
+                    onToolChange(tool);
+                    if (tool !== "Shapes") {
+                      setActiveShape(null);
+                    }
+                  }}
                 >
                   {tool}
                 </button>
@@ -366,7 +415,7 @@ function SideMenu({
                 min="600"
                 max="5000"
                 step="50"
-                value={boardSize.width}
+                value={boardWidth}
                 onChange={(e) => onBoardWidthChange(Number(e.target.value))}
               />
             </label>
@@ -378,7 +427,7 @@ function SideMenu({
                 min="400"
                 max="5000"
                 step="50"
-                value={boardSize.height}
+                value={boardHeight}
                 onChange={(e) => onBoardHeightChange(Number(e.target.value))}
               />
             </label>
