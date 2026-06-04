@@ -9,6 +9,7 @@ const authRoutes = require("./routes/auth.routes");
 const documentsRoutes = require("./routes/documents.routes");
 const permissionsRoutes = require("./routes/permissions.routes");
 const uploadsRoutes = require("./routes/uploads.routes");
+const aiRoutes = require("./routes/ai.routes");
 const errorHandler = require("./middleware/errorHandler");
 require("dotenv").config();
 
@@ -35,6 +36,7 @@ app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentsRoutes);
 app.use("/api/permissions", permissionsRoutes);
 app.use("/api/uploads", uploadsRoutes);
+app.use("/api/ai", aiRoutes);
 app.use("/public/uploads", express.static(path.join(__dirname, "../public/uploads")));
 
 app.use(errorHandler);

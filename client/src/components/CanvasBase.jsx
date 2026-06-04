@@ -1,8 +1,10 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer, Image as KonvaImage } from "react-konva";
 import SideMenu from "./SideMenu";
+import CodePreviewPanel from "./CodePreviewPanel";
 import { useStore } from "../store/useStore";
 import { updateDocument } from "../api/documents";
+import { generateCodeFromCanvas } from "../api/ai";
 import { refreshSession } from "../api/auth";
 import { io } from "socket.io-client";
 
@@ -118,6 +120,40 @@ function CanvasBase() {
   const socketRef = useRef(null);
   const [collaborators, setCollaborators] = useState([]);
   const lastCursorEmitRef = useRef(0);
+
+  // ── Design-to-Code state ──────────────────────────────────────────────
+  const [codePreviewOpen, setCodePreviewOpen] = useState(false);
+  const [codeGenLoading, setCodeGenLoading] = useState(false);
+  const [codeGenResult, setCodeGenResult] = useState(null);
+  const [codeGenError, setCodeGenError] = useState(null);
+
+  const handleGenerateCode = useCallback(async () => {
+    if (elements.length === 0) {
+      setCodeGenError("Your canvas is empty. Add some shapes, text, or images first.");
+      setCodePreviewOpen(true);
+      return;
+    }
+    setCodeGenError(null);
+    setCodeGenResult(null);
+    setCodeGenLoading(true);
+    setCodePreviewOpen(true);
+    try {
+      const payload = {
+        elements,
+        boardConfig: {
+          boardWidth,
+          boardHeight,
+          backgroundColor: boardColor,
+        },
+      };
+      const result = await generateCodeFromCanvas(payload);
+      setCodeGenResult(result);
+    } catch (err) {
+      setCodeGenError(err.message || "Code generation failed. Please try again.");
+    } finally {
+      setCodeGenLoading(false);
+    }
+  }, [elements, boardWidth, boardHeight, boardColor]);
 
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
@@ -1103,8 +1139,17 @@ function CanvasBase() {
           onImportJSON={handleImportJSON}
         />
 
+        {/* ── Code Preview Panel (slide-over drawer) ── */}
+        <CodePreviewPanel
+          isOpen={codePreviewOpen}
+          onClose={() => setCodePreviewOpen(false)}
+          result={codeGenResult}
+          isLoading={codeGenLoading}
+          error={codeGenError}
+        />
+
         <div ref={boardRef} className="canvas-base__board">
-          {/* Live Collaborators Circle Header */}
+          {/* Live Collaborators + Generate Code Header */}
           <div
             style={{
               position: "absolute",
@@ -1116,6 +1161,70 @@ function CanvasBase() {
               zIndex: 100,
             }}
           >
+            {/* Generate Code button */}
+            {user && (
+              <button
+                id="generate-code-btn"
+                type="button"
+                onClick={handleGenerateCode}
+                title="Convert this design to React + Tailwind code"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "7px",
+                  padding: "7px 14px",
+                  borderRadius: "10px",
+                  background: codeGenLoading
+                    ? "rgba(99,102,241,0.25)"
+                    : "linear-gradient(135deg, #6366f1, #8b5cf6)",
+                  border: "1px solid rgba(99,102,241,0.4)",
+                  color: "#ffffff",
+                  fontSize: "12px",
+                  fontWeight: "700",
+                  cursor: codeGenLoading ? "not-allowed" : "pointer",
+                  letterSpacing: "0.03em",
+                  boxShadow: codeGenLoading ? "none" : "0 4px 16px rgba(99,102,241,0.35)",
+                  transition: "all 0.2s ease",
+                  opacity: codeGenLoading ? 0.7 : 1,
+                }}
+                disabled={codeGenLoading}
+                onMouseEnter={(e) => {
+                  if (!codeGenLoading) {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(99,102,241,0.45)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "";
+                  e.currentTarget.style.boxShadow = codeGenLoading ? "none" : "0 4px 16px rgba(99,102,241,0.35)";
+                }}
+              >
+                {codeGenLoading ? (
+                  <>
+                    <div
+                      style={{
+                        width: "12px",
+                        height: "12px",
+                        borderRadius: "50%",
+                        border: "2px solid rgba(255,255,255,0.3)",
+                        borderTopColor: "#fff",
+                        animation: "spin 0.7s linear infinite",
+                        flexShrink: 0,
+                      }}
+                    />
+                    Generating...
+                  </>
+                ) : (
+                  <>
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                      <polyline points="16,18 22,12 16,6" />
+                      <polyline points="8,6 2,12 8,18" />
+                    </svg>
+                    Generate Code
+                  </>
+                )}
+              </button>
+            )}
             {collaborators.map((u) => {
               const initial = u.user?.email ? u.user.email.charAt(0).toUpperCase() : "?";
               const color = u.user?.color || "#3b82f6";

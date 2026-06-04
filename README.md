@@ -105,3 +105,84 @@ docker-compose up --build
 2. Open `http://localhost/` in your browser.
 3. The Nginx gateway handles port 80 routing to proxy static files, API paths, and WebSockets cleanly.
 
+---
+
+## Design-to-Code Pipeline 🚀
+
+The platform includes a complete **AI-powered design-to-code pipeline** that converts canvas drawings into production-ready **React + Tailwind CSS** components.
+
+### Pipeline Architecture
+
+```
+Canvas Elements (Konva JSON)
+        │
+        ▼
+[1] inferUiSchema.js      → Spatial analysis, semantic AST (button/card/input/navbar/hero)
+        │
+        ▼
+[2] extractDesignTokens.js → Color palette, typography scale, border radii
+        │
+        ▼
+[3] normalizeWithLLM.js   → GPT-4o-mini structured output (enriches + corrects AST)
+        │
+        ▼
+[4] generateCodeWithLLM.js → GPT-4o structured output (React + Tailwind components)
+        │
+        ▼
+Generated Code (App.jsx, sub-components, optional tailwind.config.js)
+```
+
+### How to Enable LLM Code Generation
+
+Add your OpenAI API key to the server `.env`:
+```env
+OPENAI_API_KEY=sk-...
+```
+
+Without the key, the pipeline runs in **fallback mode** — it still infers the UI schema and design tokens, then generates a basic React scaffold without calling the LLM.
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/ai/generate` | Full pipeline: canvas → AST → normalize → code |
+| `POST` | `/api/ai/schema` | Light mode: canvas → AST + tokens only (no LLM) |
+
+Both endpoints accept:
+```json
+{
+  "elements": [...],
+  "boardConfig": { "boardWidth": 2200, "boardHeight": 1400, "backgroundColor": "#ffffff" }
+}
+```
+Or, if working from a saved document:
+```json
+{ "documentId": "uuid-of-your-document" }
+```
+
+### Frontend Usage
+
+1. Draw your UI on the canvas (shapes, text, images).
+2. Click the **✦ Generate Code** button in the top-right corner of the canvas.
+3. A slide-over drawer opens showing the generated React components with:
+   - **Generated Code** tab: Syntax-highlighted files with copy buttons and file-level navigation.
+   - **UI Schema** tab: The intermediate semantic AST for inspection/debugging.
+   - **Design Tokens** tab: Color swatches and typography scale extracted from the canvas.
+4. Download individual files or all files directly from the drawer.
+
+### Semantic Classifications
+
+The heuristic AST builder classifies elements as:
+
+| Kind | Detection heuristic |
+|------|---------------------|
+| `button` | Small rect (< 320×90px) containing a single text child |
+| `input` | Thin rect (30–60px tall) with transparent/white fill |
+| `navbar` | Wide rect at the top of the canvas |
+| `hero` | Full-width tall rect |
+| `card` | Container holding both image + text children |
+| `text` | Konva Text node |
+| `image` | Konva Image node |
+| `icon` | Pen path / line drawing |
+| `container` | Any other rect with children |
+
