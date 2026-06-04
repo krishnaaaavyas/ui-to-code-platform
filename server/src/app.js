@@ -1,12 +1,22 @@
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
+const path = require("path");
+const helmet = require("helmet");
+const compression = require("compression");
+const morgan = require("morgan");
 const authRoutes = require("./routes/auth.routes");
 const documentsRoutes = require("./routes/documents.routes");
+const permissionsRoutes = require("./routes/permissions.routes");
+const uploadsRoutes = require("./routes/uploads.routes");
 const errorHandler = require("./middleware/errorHandler");
 require("dotenv").config();
 
 const app = express();
+
+app.use(helmet({ contentSecurityPolicy: false }));
+app.use(compression());
+app.use(morgan("dev"));
 
 app.use(
   cors({
@@ -23,7 +33,11 @@ app.get("/api/health", (req, res) => {
 
 app.use("/api/auth", authRoutes);
 app.use("/api/documents", documentsRoutes);
+app.use("/api/permissions", permissionsRoutes);
+app.use("/api/uploads", uploadsRoutes);
+app.use("/public/uploads", express.static(path.join(__dirname, "../public/uploads")));
 
 app.use(errorHandler);
 
 module.exports = app;
+

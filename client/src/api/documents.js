@@ -12,7 +12,7 @@ const getHeaders = () => {
   return headers;
 };
 
-async function apiRequest(url, options = {}) {
+export async function apiRequest(url, options = {}) {
   const headers = getHeaders();
   let res = await fetch(url, {
     ...options,

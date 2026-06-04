@@ -1,0 +1,58 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: whiteboard-db
+    environment:
+      POSTGRES_DB: whiteboard
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: password
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./server/src/db/schema.sql:/docker-entrypoint-initdb.d/schema.sql
+    restart: unless-stopped
+
+  server:
+    build:
+      context: ./server
+    container_name: whiteboard-server
+    environment:
+      PORT: 4000
+      JWT_SECRET: supersecrettokenkeyforjwtWHITEBOARDapp
+      JWT_REFRESH_SECRET: supersecrettokenkeyforjwtREFRESHWHITEBOARDapp
+      DATABASE_URL: postgres://postgres:password@postgres:5432/whiteboard
+      CLIENT_ORIGIN: http://localhost
+    ports:
+      - "4000:4000"
+    volumes:
+      - server-db-data:/app/src/db
+      - server-uploads-data:/app/public/uploads
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+  client:
+    build:
+      context: ./client
+    container_name: whiteboard-client
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:alpine
+    container_name: whiteboard-gateway
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+    depends_on:
+      - client
+      - server
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  server-db-data:
+  server-uploads-data:

@@ -70,11 +70,13 @@ export const useStore = create((set, get) => ({
   user: null,
   accessToken: null,
   isAuthReady: false,
+  socket: null, // Socket.IO client instance
 
   // Persistent document metadata
   documentId: null,
   documentName: "Untitled Design",
   documentVersion: 1, // keeps track of DB version
+  userRole: "owner", // "owner" | "editor" | "viewer"
   isDirty: false,
   saveStatus: "idle", // "idle" | "saving" | "saved" | "error" | "conflict"
   saveError: null,
@@ -181,6 +183,7 @@ export const useStore = create((set, get) => ({
       documentId: doc.id,
       documentName: doc.name,
       documentVersion: doc.version || 1,
+      userRole: doc.user_role || "owner",
       boardWidth: doc.data.boardWidth,
       boardHeight: doc.data.boardHeight,
       backgroundColor: doc.data.backgroundColor,
@@ -206,6 +209,7 @@ export const useStore = create((set, get) => ({
       documentId: null,
       documentName: "Untitled Design",
       documentVersion: 1,
+      userRole: "owner",
       boardWidth: 2200,
       boardHeight: 1400,
       backgroundColor: "#ffffff",
@@ -223,6 +227,12 @@ export const useStore = create((set, get) => ({
   addElement: (element) =>
     set((state) => {
       const nextElements = [...state.elements, element];
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.add", payload: element }
+        });
+      }
       return pushState(state, {
         elements: nextElements,
         selectedElementId: element.id,
@@ -234,6 +244,12 @@ export const useStore = create((set, get) => ({
       const nextElements = state.elements.map((element) =>
         element.id === id ? { ...element, ...patch } : element
       );
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.update", payload: { id, patch } }
+        });
+      }
       return pushState(state, { elements: nextElements });
     }),
 
@@ -242,6 +258,12 @@ export const useStore = create((set, get) => ({
       const nextElements = state.elements.filter((element) => element.id !== id);
       const nextSelectedId =
         state.selectedElementId === id ? null : state.selectedElementId;
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.delete", payload: { id } }
+        });
+      }
       return pushState(state, {
         elements: nextElements,
         selectedElementId: nextSelectedId,
@@ -262,6 +284,12 @@ export const useStore = create((set, get) => ({
       const nextElements = [...elements];
       const [removed] = nextElements.splice(fromIndex, 1);
       nextElements.splice(toIndex, 0, removed);
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.reorder", payload: { from: fromIndex, to: toIndex } }
+        });
+      }
       return pushState(state, { elements: nextElements });
     }),
 
@@ -270,6 +298,13 @@ export const useStore = create((set, get) => ({
       const nextElements = state.elements.map((element) =>
         element.id === id ? { ...element, visible: !element.visible } : element
       );
+      const nextVisibility = nextElements.find((el) => el.id === id)?.visible;
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.update", payload: { id, patch: { visible: nextVisibility } } }
+        });
+      }
       return pushState(state, { elements: nextElements });
     }),
 
@@ -278,6 +313,13 @@ export const useStore = create((set, get) => ({
       const nextElements = state.elements.map((element) =>
         element.id === id ? { ...element, locked: !element.locked } : element
       );
+      const nextLocked = nextElements.find((el) => el.id === id)?.locked;
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.update", payload: { id, patch: { locked: nextLocked } } }
+        });
+      }
       return pushState(state, { elements: nextElements });
     }),
 
@@ -286,6 +328,12 @@ export const useStore = create((set, get) => ({
       const nextElements = state.elements.map((element) =>
         element.id === id ? { ...element, name } : element
       );
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "element.update", payload: { id, patch: { name } } }
+        });
+      }
       return pushState(state, { elements: nextElements });
     }),
 
@@ -295,11 +343,84 @@ export const useStore = create((set, get) => ({
   setSelectedId: (id) => set({ selectedElementId: id }),
 
   setBoardWidth: (width) =>
-    set((state) => pushState(state, { boardWidth: width })),
+    set((state) => {
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "canvas.update", payload: { boardWidth: width } }
+        });
+      }
+      return pushState(state, { boardWidth: width });
+    }),
 
   setBoardHeight: (height) =>
-    set((state) => pushState(state, { boardHeight: height })),
+    set((state) => {
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "canvas.update", payload: { boardHeight: height } }
+        });
+      }
+      return pushState(state, { boardHeight: height });
+    }),
 
   setBackgroundColor: (color) =>
-    set((state) => pushState(state, { backgroundColor: color })),
+    set((state) => {
+      if (state.socket && state.socket.connected) {
+        state.socket.emit("element.op", {
+          documentId: state.documentId,
+          op: { type: "canvas.update", payload: { backgroundColor: color } }
+        });
+      }
+      return pushState(state, { backgroundColor: color });
+    }),
+
+  // Remote elements & board actions (Socket.IO updates)
+  remoteAddElement: (element) =>
+    set((state) => {
+      const exists = state.elements.some((el) => el.id === element.id);
+      if (exists) return {};
+      return { elements: [...state.elements, element] };
+    }),
+
+  remoteUpdateElement: (id, patch) =>
+    set((state) => {
+      const nextElements = state.elements.map((el) =>
+        el.id === id ? { ...el, ...patch } : el
+      );
+      return { elements: nextElements };
+    }),
+
+  remoteDeleteElement: (id) =>
+    set((state) => {
+      const nextElements = state.elements.filter((el) => el.id !== id);
+      const nextSelectedId = state.selectedElementId === id ? null : state.selectedElementId;
+      return { elements: nextElements, selectedElementId: nextSelectedId };
+    }),
+
+  remoteReorderElements: (fromIndex, toIndex) =>
+    set((state) => {
+      const elements = state.elements;
+      if (
+        fromIndex < 0 ||
+        fromIndex >= elements.length ||
+        toIndex < 0 ||
+        toIndex >= elements.length
+      ) {
+        return {};
+      }
+      const nextElements = [...elements];
+      const [removed] = nextElements.splice(fromIndex, 1);
+      nextElements.splice(toIndex, 0, removed);
+      return { elements: nextElements };
+    }),
+
+  remoteUpdateBoard: (patch) =>
+    set(() => {
+      const update = {};
+      if (patch.boardWidth !== undefined) update.boardWidth = patch.boardWidth;
+      if (patch.boardHeight !== undefined) update.boardHeight = patch.boardHeight;
+      if (patch.backgroundColor !== undefined) update.backgroundColor = patch.backgroundColor;
+      return update;
+    }),
 }));

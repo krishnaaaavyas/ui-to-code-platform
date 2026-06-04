@@ -10,6 +10,8 @@ import {
   restoreVersion,
 } from "../api/documents";
 import { registerUser, loginUser, logoutUser as apiLogout } from "../api/auth";
+import { listPermissions, shareDocument, removePermission } from "../api/permissions";
+import { getPresignedUrl, uploadFileDirectly, registerAsset } from "../api/uploads";
 
 const toolOptions = [
   "Shapes",
@@ -37,6 +39,60 @@ const strokeOptions = [
 ];
 
 function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedItem, onDeleteSelected, onChangeSelectedColor }) {
+  const userRole = useStore((state) => state.userRole);
+  const [uploadingImage, setUploadingImage] = useState(false);
+
+  const handleImageUpload = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const currentRole = useStore.getState().userRole;
+    const documentId = useStore.getState().documentId;
+    if (currentRole === "viewer") {
+      alert("Access denied: Viewers cannot upload images.");
+      return;
+    }
+    if (!documentId) {
+      alert("Please save your design first before uploading images.");
+      return;
+    }
+
+    try {
+      setUploadingImage(true);
+      const presignResponse = await getPresignedUrl({
+        filename: file.name,
+        mimeType: file.type,
+        documentId
+      });
+      await uploadFileDirectly(presignResponse.uploadUrl, file, file.type);
+      await registerAsset({
+        documentId,
+        key: presignResponse.key,
+        url: presignResponse.assetUrl,
+        mimeType: file.type,
+        sizeBytes: file.size
+      });
+      const newImageElement = {
+        id: `element-${Date.now()}`,
+        type: "image",
+        name: file.name,
+        x: 200,
+        y: 200,
+        width: 200,
+        height: 200,
+        url: presignResponse.assetUrl,
+        visible: true,
+        locked: false,
+        rotation: 0
+      };
+      useStore.getState().addElement(newImageElement);
+    } catch (err) {
+      alert("Failed to upload image: " + err.message);
+    } finally {
+      setUploadingImage(false);
+    }
+  };
+
   return (
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Shapes</p>
@@ -44,6 +100,7 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
         {shapeOptions.map((shape) => (
           <button
             key={shape.name}
+            disabled={userRole === "viewer"}
             className={`shape-item ${activeShape === shape.name ? "shape-item--active" : ""}`}
             onClick={() => {
               onChangeActiveShape(shape.name);
@@ -56,27 +113,66 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
           </button>
         ))}
       </div>
-      {selectedItem && ["rect", "rectangle", "circle", "triangle", "diamond", "line"].includes(selectedItem.type) && (
+
+      <div className="image-upload-field" style={{ marginTop: "16px", padding: "12px", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px", background: "rgba(15,23,42,0.1)" }}>
+        <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#94a3b8", marginBottom: "6px", textTransform: "uppercase" }}>
+          Upload Image
+        </label>
+        <input
+          type="file"
+          accept="image/*"
+          disabled={userRole === "viewer" || uploadingImage}
+          onChange={handleImageUpload}
+          style={{ display: "none" }}
+          id="image-file-input"
+        />
+        <label
+          htmlFor="image-file-input"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "8px 12px",
+            borderRadius: "6px",
+            background: userRole === "viewer" ? "rgba(255,255,255,0.03)" : "#3b82f6",
+            color: userRole === "viewer" ? "#94a3b8" : "#fff",
+            fontWeight: "600",
+            fontSize: "12px",
+            cursor: userRole === "viewer" || uploadingImage ? "not-allowed" : "pointer",
+            textAlign: "center",
+            border: "none",
+            transition: "background 0.2s"
+          }}
+        >
+          {uploadingImage ? "Uploading..." : "Choose Image"}
+        </label>
+      </div>
+
+      {selectedItem && ["rect", "rectangle", "circle", "triangle", "diamond", "line", "image"].includes(selectedItem.type) && (
         <div className="shape-settings">
-          <div className="shape-settings__field">
-            <label>Shape color</label>
-            <input
-              type="color"
-              value={selectedItem.fill || "#2563eb"}
-              onChange={(e) => onChangeSelectedColor(e.target.value)}
-            />
-          </div>
-          <button className="shape-settings__delete" onClick={onDeleteSelected}>
-            Delete selected shape
+          {selectedItem.type !== "image" && (
+            <div className="shape-settings__field">
+              <label>Shape color</label>
+              <input
+                type="color"
+                disabled={userRole === "viewer"}
+                value={selectedItem.fill || "#2563eb"}
+                onChange={(e) => onChangeSelectedColor(e.target.value)}
+              />
+            </div>
+          )}
+          <button className="shape-settings__delete" disabled={userRole === "viewer"} onClick={onDeleteSelected}>
+            Delete selected {selectedItem.type === "image" ? "image" : "shape"}
           </button>
         </div>
       )}
-      <p className="side-menu__panel-hint">Click a shape to add it, or select an existing shape to edit.</p>
+      <p className="side-menu__panel-hint">Click a shape/upload an image to add it, or select an existing element to edit.</p>
     </div>
   );
 }
 
 function TextPanel({ onAddText }) {
+  const userRole = useStore((state) => state.userRole);
   const [textInput, setTextInput] = useState("");
 
   const handleAdd = () => {
@@ -95,10 +191,11 @@ function TextPanel({ onAddText }) {
           className="text-input"
           placeholder="Enter text here..."
           value={textInput}
+          disabled={userRole === "viewer"}
           onChange={(e) => setTextInput(e.target.value)}
           rows="4"
         />
-        <button className="text-btn" onClick={handleAdd}>
+        <button className="text-btn" disabled={userRole === "viewer" || !textInput.trim()} onClick={handleAdd}>
           Add to Canvas
         </button>
       </div>
@@ -114,6 +211,7 @@ function parseRgb(rgb) {
 }
 
 function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
+  const userRole = useStore((state) => state.userRole);
   const color = parseRgb(backgroundColor);
 
   const handleColorChange = (channel, value) => {
@@ -136,6 +234,7 @@ function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
             type="range"
             min="0"
             max="255"
+            disabled={userRole === "viewer"}
             value={color.r}
             onChange={(e) => handleColorChange("r", Number(e.target.value))}
             className="color-slider"
@@ -149,6 +248,7 @@ function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
             type="range"
             min="0"
             max="255"
+            disabled={userRole === "viewer"}
             value={color.g}
             onChange={(e) => handleColorChange("g", Number(e.target.value))}
             className="color-slider"
@@ -162,6 +262,7 @@ function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
             type="range"
             min="0"
             max="255"
+            disabled={userRole === "viewer"}
             value={color.b}
             onChange={(e) => handleColorChange("b", Number(e.target.value))}
             className="color-slider"
@@ -178,6 +279,7 @@ function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
 }
 
 function StrokePanel({ selectedStroke, onStrokeChange }) {
+  const userRole = useStore((state) => state.userRole);
   return (
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Drawing Tools</p>
@@ -185,6 +287,7 @@ function StrokePanel({ selectedStroke, onStrokeChange }) {
         {strokeOptions.map((stroke) => (
           <button
             key={stroke.name}
+            disabled={userRole === "viewer"}
             className={`stroke-item ${selectedStroke === stroke.name ? "stroke-item--active" : ""}`}
             onClick={() => onStrokeChange(stroke.name)}
             title={stroke.name}
@@ -212,6 +315,7 @@ function LayersPanel() {
   const canRedo = useStore((state) => state.historyIndex < state.history.length - 1);
   const undo = useStore((state) => state.undo);
   const redo = useStore((state) => state.redo);
+  const userRole = useStore((state) => state.userRole);
 
   const [editingId, setEditingId] = useState(null);
   const [editName, setEditName] = useState("");
@@ -233,6 +337,7 @@ function LayersPanel() {
             <div key={item.id} className={`layer-item ${selectedElementId === item.id ? "layer-item--selected" : ""}`}>
               <button
                 className="layer-visibility"
+                disabled={userRole === "viewer"}
                 onClick={() => toggleElementVisibility(item.id)}
                 title={item.visible ? "Hide" : "Show"}
               >
@@ -240,12 +345,13 @@ function LayersPanel() {
               </button>
               <button
                 className="layer-lock"
+                disabled={userRole === "viewer"}
                 onClick={() => toggleElementLocked(item.id)}
                 title={item.locked ? "Unlock" : "Lock"}
               >
                 {item.locked ? "🔒" : "🔓"}
               </button>
-              {editingId === item.id ? (
+              {editingId === item.id && userRole !== "viewer" ? (
                 <input
                   type="text"
                   className="layer-name-input"
@@ -275,10 +381,11 @@ function LayersPanel() {
                   className="layer-name"
                   onClick={() => selectElement(item.id)}
                   onDoubleClick={() => {
+                    if (userRole === "viewer") return;
                     setEditingId(item.id);
                     setEditName(item.name || item.type);
                   }}
-                  title="Double click to rename"
+                  title={userRole === "viewer" ? "" : "Double click to rename"}
                 >
                   {item.name || item.type}
                 </button>
@@ -286,7 +393,7 @@ function LayersPanel() {
               <div className="layer-actions">
                 <button
                   type="button"
-                  disabled={realIndex >= elements.length - 1}
+                  disabled={realIndex >= elements.length - 1 || userRole === "viewer"}
                   onClick={() => moveLayer(realIndex, 1)}
                   title="Move layer up"
                 >
@@ -294,7 +401,7 @@ function LayersPanel() {
                 </button>
                 <button
                   type="button"
-                  disabled={realIndex <= 0}
+                  disabled={realIndex <= 0 || userRole === "viewer"}
                   onClick={() => moveLayer(realIndex, -1)}
                   title="Move layer down"
                 >
@@ -303,6 +410,7 @@ function LayersPanel() {
                 <button
                   type="button"
                   className="layer-remove"
+                  disabled={userRole === "viewer"}
                   onClick={() => deleteElement(item.id)}
                   title="Delete layer"
                 >
@@ -315,10 +423,10 @@ function LayersPanel() {
       </div>
 
       <div className="layer-history-controls">
-        <button type="button" onClick={undo} disabled={!canUndo} className="layer-history-btn">
+        <button type="button" onClick={undo} disabled={!canUndo || userRole === "viewer"} className="layer-history-btn">
           Undo
         </button>
-        <button type="button" onClick={redo} disabled={!canRedo} className="layer-history-btn">
+        <button type="button" onClick={redo} disabled={!canRedo || userRole === "viewer"} className="layer-history-btn">
           Redo
         </button>
       </div>
@@ -338,6 +446,7 @@ function DesignsPanel() {
   const serializeDocument = useStore((state) => state.serializeDocument);
   const loadDocument = useStore((state) => state.loadDocument);
   const resetDocument = useStore((state) => state.resetDocument);
+  const userRole = useStore((state) => state.userRole);
 
   // Auth states & actions
   const user = useStore((state) => state.user);
@@ -351,6 +460,13 @@ function DesignsPanel() {
   // Version history state
   const [versions, setVersions] = useState([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Collaboration permissions state
+  const [permissions, setPermissions] = useState([]);
+  const [loadingPermissions, setLoadingPermissions] = useState(false);
+  const [shareEmail, setShareEmail] = useState("");
+  const [shareRole, setShareRole] = useState("viewer");
+  const [sharing, setSharing] = useState(false);
 
   // Form tab: 'login' | 'register'
   const [authTab, setAuthTab] = useState("login");
@@ -389,14 +505,32 @@ function DesignsPanel() {
     }
   };
 
+  const fetchPermissions = async () => {
+    if (!user || !documentId) {
+      setPermissions([]);
+      return;
+    }
+    try {
+      setLoadingPermissions(true);
+      const list = await listPermissions(documentId);
+      setPermissions(list);
+    } catch (e) {
+      console.error("Error loading permissions:", e);
+    } finally {
+      setLoadingPermissions(false);
+    }
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (user) {
         fetchDesigns();
         fetchVersions();
+        fetchPermissions();
       } else {
         setDesigns([]);
         setVersions([]);
+        setPermissions([]);
       }
     }, 0);
 
@@ -425,6 +559,7 @@ function DesignsPanel() {
       setSaveStatus("saved");
       fetchVersions();
       fetchDesigns();
+      fetchPermissions();
       setTimeout(() => setSaveStatus(""), 3000);
     } catch (e) {
       if (e.message === "conflict") {
@@ -467,6 +602,32 @@ function DesignsPanel() {
     }
   };
 
+  const handleShare = async (e) => {
+    e.preventDefault();
+    const email = shareEmail.trim();
+    if (!email) return;
+    try {
+      setSharing(true);
+      await shareDocument(documentId, { email, role: shareRole });
+      setShareEmail("");
+      fetchPermissions();
+    } catch (err) {
+      alert("Failed to share design: " + err.message);
+    } finally {
+      setSharing(false);
+    }
+  };
+
+  const handleRevokePermission = async (permId) => {
+    if (!window.confirm("Are you sure you want to revoke access for this user?")) return;
+    try {
+      await removePermission(documentId, permId);
+      fetchPermissions();
+    } catch (err) {
+      alert("Failed to revoke access: " + err.message);
+    }
+  };
+
   const handleAuthSubmit = async (e) => {
     e.preventDefault();
     setAuthError("");
@@ -504,6 +665,7 @@ function DesignsPanel() {
       logoutUserStore();
       setDesigns([]);
       setVersions([]);
+      setPermissions([]);
     }
   };
 
@@ -512,6 +674,7 @@ function DesignsPanel() {
       const doc = await restoreVersion(documentId, versionId);
       loadDocument(doc);
       fetchVersions();
+      fetchPermissions();
     } catch (err) {
       alert("Failed to restore version: " + err.message);
     }
@@ -594,6 +757,7 @@ function DesignsPanel() {
             type="text"
             className="design-name-input"
             value={documentName}
+            disabled={userRole === "viewer"}
             onChange={(e) => setDocumentName(e.target.value)}
             placeholder="Untitled Design"
           />
@@ -604,11 +768,11 @@ function DesignsPanel() {
             type="button"
             className="design-btn design-btn--save"
             onClick={handleSave}
-            disabled={isSaving}
+            disabled={isSaving || userRole === "viewer"}
           >
             {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "✓ Saved" : "Save Design"}
           </button>
-          <button type="button" className="design-btn design-btn--new" onClick={handleNew}>
+          <button type="button" className="design-btn design-btn--new" onClick={handleNew} disabled={userRole === "viewer"}>
             New Blank
           </button>
         </div>
@@ -623,28 +787,97 @@ function DesignsPanel() {
         <p className="side-menu__panel-hint">No saved designs found.</p>
       ) : (
         <div className="designs-list">
-          {designs.map((design) => (
-            <div
-              key={design.id}
-              className={`design-list-item ${documentId === design.id ? "design-list-item--active" : ""}`}
-              onClick={() => handleLoad(design.id)}
-            >
-              <div className="design-info">
-                <span className="design-title">{design.name}</span>
-                <span className="design-date">
-                  {new Date(design.updated_at).toLocaleDateString()} (v{design.version})
-                </span>
-              </div>
-              <button
-                type="button"
-                className="design-remove-btn"
-                onClick={(e) => handleDelete(design.id, e)}
-                title="Delete design"
+          {designs.map((design) => {
+            const isOwnerOrEditor = design.user_role !== "viewer";
+            return (
+              <div
+                key={design.id}
+                className={`design-list-item ${documentId === design.id ? "design-list-item--active" : ""}`}
+                onClick={() => handleLoad(design.id)}
               >
-                ✕
+                <div className="design-info">
+                  <span className="design-title">{design.name}</span>
+                  <span className="design-date">
+                    {new Date(design.updated_at).toLocaleDateString()} (v{design.version}) {design.user_role && `[${design.user_role}]`}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  className="design-remove-btn"
+                  disabled={!isOwnerOrEditor}
+                  onClick={(e) => handleDelete(design.id, e)}
+                  title="Delete design"
+                >
+                  ✕
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {documentId && (
+        <div className="share-section" style={{ marginTop: "16px", padding: "12px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15,23,42,0.2)" }}>
+          <p className="side-menu__panel-title" style={{ marginTop: 0 }}>Share Design</p>
+          
+          {userRole !== "viewer" && (
+            <form onSubmit={handleShare} className="share-form" style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+              <input
+                type="email"
+                placeholder="collaborator@example.com"
+                value={shareEmail}
+                onChange={(e) => setShareEmail(e.target.value)}
+                required
+                style={{ flex: 1, minWidth: 0, padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.4)", color: "#fff", fontSize: "12px" }}
+              />
+              <select
+                value={shareRole}
+                onChange={(e) => setShareRole(e.target.value)}
+                style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.4)", color: "#fff", fontSize: "12px" }}
+              >
+                <option value="viewer">Viewer</option>
+                <option value="editor">Editor</option>
+              </select>
+              <button
+                type="submit"
+                disabled={sharing}
+                style={{ padding: "6px 12px", borderRadius: "6px", border: "none", background: "#3b82f6", color: "#fff", fontWeight: "600", cursor: "pointer", fontSize: "12px" }}
+              >
+                {sharing ? "..." : "Share"}
               </button>
+            </form>
+          )}
+
+          {loadingPermissions ? (
+            <p className="side-menu__panel-hint">Loading shared users...</p>
+          ) : permissions.length === 0 ? (
+            <p className="side-menu__panel-hint">Not shared with anyone yet.</p>
+          ) : (
+            <div className="shared-users-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+              {permissions.map((p) => (
+                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", background: "rgba(255,255,255,0.03)", borderRadius: "6px", fontSize: "12px" }}>
+                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+                    <span style={{ color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.user_email}>
+                      {p.user_email}
+                    </span>
+                    <span style={{ color: "#94a3b8", fontSize: "10px", textTransform: "capitalize" }}>
+                      {p.role}
+                    </span>
+                  </div>
+                  {userRole !== "viewer" && (
+                    <button
+                      type="button"
+                      onClick={() => handleRevokePermission(p.id)}
+                      style={{ border: "none", background: "none", color: "#ef4444", fontSize: "12px", cursor: "pointer", padding: "4px" }}
+                      title="Revoke access"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
-          ))}
+          )}
         </div>
       )}
 
@@ -668,6 +901,7 @@ function DesignsPanel() {
                   <button
                     type="button"
                     className="version-restore-btn"
+                    disabled={userRole === "viewer"}
                     onClick={() => handleRestore(v.id)}
                   >
                     Restore
@@ -702,6 +936,7 @@ function SideMenu({
   onChangeSelectedColor,
 }) {
   const [activeShape, setActiveShape] = useState(null);
+  const userRole = useStore((state) => state.userRole);
 
   const renderToolPanel = () => {
     switch (activeTool) {
@@ -784,6 +1019,7 @@ function SideMenu({
                 min="600"
                 max="5000"
                 step="50"
+                disabled={userRole === "viewer"}
                 value={boardWidth}
                 onChange={(e) => onBoardWidthChange(Number(e.target.value))}
               />
@@ -796,6 +1032,7 @@ function SideMenu({
                 min="400"
                 max="5000"
                 step="50"
+                disabled={userRole === "viewer"}
                 value={boardHeight}
                 onChange={(e) => onBoardHeightChange(Number(e.target.value))}
               />

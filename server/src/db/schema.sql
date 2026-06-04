@@ -26,3 +26,23 @@ create table if not exists document_versions (
   data jsonb not null,
   created_at timestamptz not null default now()
 );
+
+create table if not exists document_permissions (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references documents(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  role text not null check (role in ('viewer', 'editor')),
+  created_at timestamptz not null default now(),
+  unique (document_id, user_id)
+);
+
+create table if not exists assets (
+  id uuid primary key default gen_random_uuid(),
+  document_id uuid not null references documents(id) on delete cascade,
+  user_id uuid not null references users(id) on delete cascade,
+  key text not null,
+  url text not null,
+  mime_type text,
+  size_bytes integer,
+  created_at timestamptz not null default now()
+);

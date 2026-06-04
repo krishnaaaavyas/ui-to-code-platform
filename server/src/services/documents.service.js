@@ -5,6 +5,7 @@ const crypto = require("crypto");
 
 const DOCUMENTS_DB_PATH = path.join(__dirname, "../db/documents.json");
 const VERSIONS_DB_PATH = path.join(__dirname, "../db/versions.json");
+const PERMISSIONS_DB_PATH = path.join(__dirname, "../db/permissions.json");
 
 // Helper to read JSON databases
 const readJsonDb = (filePath) => {
@@ -94,25 +95,37 @@ exports.list = async (user_id) => {
   if (isUsingPg()) {
     const result = await pool.query(
       `
-      select id, name, version, created_at, updated_at
-      from documents
-      where user_id = $1
-      order by updated_at desc
+      select d.id, d.name, d.version, d.created_at, d.updated_at, d.user_id,
+             case when d.user_id = $1 then 'owner' else p.role end as user_role
+      from documents d
+      left join document_permissions p on p.document_id = d.id and p.user_id = $1
+      where d.user_id = $1 or p.id is not null
+      order by d.updated_at desc
       `,
       [user_id]
     );
     return result.rows;
   } else {
     const docs = readJsonDb(DOCUMENTS_DB_PATH);
+    const permissions = readJsonDb(PERMISSIONS_DB_PATH);
+    const userPerms = permissions.filter((p) => p.user_id === user_id);
+    const sharedDocIds = userPerms.map((p) => p.document_id);
+
     return docs
-      .filter((doc) => doc.user_id === user_id)
-      .map((doc) => ({
-        id: doc.id,
-        name: doc.name,
-        version: doc.version,
-        created_at: doc.created_at,
-        updated_at: doc.updated_at,
-      }))
+      .filter((doc) => doc.user_id === user_id || sharedDocIds.includes(doc.id))
+      .map((doc) => {
+        const perm = userPerms.find((p) => p.document_id === doc.id);
+        const role = doc.user_id === user_id ? "owner" : (perm ? perm.role : "viewer");
+        return {
+          id: doc.id,
+          name: doc.name,
+          version: doc.version,
+          created_at: doc.created_at,
+          updated_at: doc.updated_at,
+          user_id: doc.user_id,
+          user_role: role,
+        };
+      })
       .sort((a, b) => new Date(b.updated_at) - new Date(a.updated_at));
   }
 };
@@ -121,16 +134,31 @@ exports.getById = async (id, user_id) => {
   if (isUsingPg()) {
     const result = await pool.query(
       `
-      select *
-      from documents
-      where id = $1 and user_id = $2
+      select d.*,
+             case when d.user_id = $2 then 'owner' else p.role end as user_role
+      from documents d
+      left join document_permissions p on p.document_id = d.id and p.user_id = $2
+      where d.id = $1 and (d.user_id = $2 or p.id is not null)
       `,
       [id, user_id]
     );
     return result.rows[0] || null;
   } else {
     const docs = readJsonDb(DOCUMENTS_DB_PATH);
-    return docs.find((doc) => doc.id === id && doc.user_id === user_id) || null;
+    const doc = docs.find((d) => d.id === id);
+    if (!doc) return null;
+
+    if (doc.user_id === user_id) {
+      return { ...doc, user_role: "owner" };
+    }
+
+    const permissions = readJsonDb(PERMISSIONS_DB_PATH);
+    const perm = permissions.find((p) => p.document_id === id && p.user_id === user_id);
+    if (perm) {
+      return { ...doc, user_role: perm.role };
+    }
+
+    return null;
   }
 };
 

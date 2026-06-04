@@ -1,9 +1,39 @@
 import { useEffect, useRef, useState } from "react";
-import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer } from "react-konva";
+import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer, Image as KonvaImage } from "react-konva";
 import SideMenu from "./SideMenu";
 import { useStore } from "../store/useStore";
 import { updateDocument } from "../api/documents";
 import { refreshSession } from "../api/auth";
+import { io } from "socket.io-client";
+
+function CanvasImage({ item, onSelect, onDragEnd, onTransformEnd, isLocked, refCallback }) {
+  const [imgNode, setImgNode] = useState(null);
+
+  useEffect(() => {
+    const image = new window.Image();
+    image.src = item.url;
+    image.onload = () => {
+      setImgNode(image);
+    };
+  }, [item.url]);
+
+  return (
+    <KonvaImage
+      ref={refCallback}
+      image={imgNode}
+      x={item.x}
+      y={item.y}
+      width={item.width || 200}
+      height={item.height || 200}
+      rotation={item.rotation || 0}
+      draggable={!isLocked}
+      onClick={onSelect}
+      onTap={onSelect}
+      onDragEnd={onDragEnd}
+      onTransformEnd={onTransformEnd}
+    />
+  );
+}
 
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
@@ -82,6 +112,12 @@ function CanvasBase() {
   const setUser = useStore((state) => state.setUser);
   const setAccessToken = useStore((state) => state.setAccessToken);
   const setAuthReady = useStore((state) => state.setAuthReady);
+  const accessToken = useStore((state) => state.accessToken);
+  const userRole = useStore((state) => state.userRole);
+
+  const socketRef = useRef(null);
+  const [collaborators, setCollaborators] = useState([]);
+  const lastCursorEmitRef = useRef(0);
 
   // Restore active session on mount
   useEffect(() => {
@@ -98,6 +134,106 @@ function CanvasBase() {
     };
     restoreSession();
   }, [setUser, setAccessToken, setAuthReady]);
+
+  // Socket.IO Room Connection and Events synchronization
+  useEffect(() => {
+    if (!documentId || !accessToken) {
+      const timer = setTimeout(() => {
+        setCollaborators([]);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+
+    const socket = io("http://localhost:4000", {
+      auth: { token: accessToken },
+    });
+    socketRef.current = socket;
+    useStore.setState({ socket: socket });
+
+    socket.on("connect", () => {
+      console.log("Socket connected, joining room:", documentId);
+      socket.emit("join-room", { documentId });
+    });
+
+    socket.on("connect_error", (err) => {
+      console.error("Socket connection error:", err.message);
+    });
+
+    socket.on("error-msg", (data) => {
+      alert(data.message);
+    });
+
+    socket.on("room.users", (users) => {
+      const others = users.filter((u) => u.socketId !== socket.id);
+      setCollaborators(others);
+    });
+
+    socket.on("user.joined", ({ socketId, user: joinedUser }) => {
+      setCollaborators((prev) => {
+        const exists = prev.some((u) => u.socketId === socketId);
+        if (exists) return prev;
+        return [...prev, { socketId, user: joinedUser, cursor: null, selectedElementId: null }];
+      });
+    });
+
+    socket.on("user.left", ({ socketId }) => {
+      setCollaborators((prev) => prev.filter((u) => u.socketId !== socketId));
+    });
+
+    socket.on("cursor.move", ({ socketId, x, y }) => {
+      setCollaborators((prev) =>
+        prev.map((u) => (u.socketId === socketId ? { ...u, cursor: { x, y } } : u))
+      );
+    });
+
+    socket.on("selection.set", ({ socketId, elementId }) => {
+      setCollaborators((prev) =>
+        prev.map((u) => (u.socketId === socketId ? { ...u, selectedElementId: elementId } : u))
+      );
+    });
+
+    socket.on("element.op", (op) => {
+      const { type, payload } = op;
+      if (type === "element.add") {
+        useStore.getState().remoteAddElement(payload);
+      } else if (type === "element.update") {
+        useStore.getState().remoteUpdateElement(payload.id, payload.patch);
+      } else if (type === "element.delete") {
+        useStore.getState().remoteDeleteElement(payload.id);
+      } else if (type === "element.reorder") {
+        useStore.getState().remoteReorderElements(payload.from, payload.to);
+      } else if (type === "canvas.update") {
+        if (payload.elements !== undefined) {
+          useStore.setState({ elements: payload.elements });
+        }
+        useStore.getState().remoteUpdateBoard(payload);
+      }
+    });
+
+    return () => {
+      socket.disconnect();
+      socketRef.current = null;
+      useStore.setState({ socket: null });
+    };
+  }, [documentId, accessToken]);
+
+  // Emit selection set on active element changes
+  useEffect(() => {
+    if (socketRef.current && socketRef.current.connected && documentId) {
+      socketRef.current.emit("selection.set", { documentId, elementId: selectedElementId });
+    }
+  }, [selectedElementId, documentId]);
+
+  // Throttled cursor emission
+  const emitCursorMove = (x, y) => {
+    const now = Date.now();
+    if (now - lastCursorEmitRef.current > 50) {
+      if (socketRef.current && socketRef.current.connected) {
+        socketRef.current.emit("cursor.move", { documentId, x, y });
+      }
+      lastCursorEmitRef.current = now;
+    }
+  };
 
   // Debounced autosave effect
   useEffect(() => {
@@ -211,15 +347,36 @@ function CanvasBase() {
 
       if (cmdOrCtrl && e.key.toLowerCase() === "z") {
         e.preventDefault();
+        if (userRole === "viewer") return;
         if (e.shiftKey) {
           useStore.getState().redo();
+          if (socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit("element.op", {
+              documentId,
+              op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
+            });
+          }
         } else {
           useStore.getState().undo();
+          if (socketRef.current && socketRef.current.connected) {
+            socketRef.current.emit("element.op", {
+              documentId,
+              op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
+            });
+          }
         }
       } else if (cmdOrCtrl && e.key.toLowerCase() === "y") {
         e.preventDefault();
+        if (userRole === "viewer") return;
         useStore.getState().redo();
+        if (socketRef.current && socketRef.current.connected) {
+          socketRef.current.emit("element.op", {
+            documentId,
+            op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
+          });
+        }
       } else if (e.key === "Delete" || e.key === "Backspace") {
+        if (userRole === "viewer") return;
         if (selectedElementId) {
           e.preventDefault();
           deleteElement(selectedElementId);
@@ -236,7 +393,7 @@ function CanvasBase() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
     };
-  }, [selectedElementId, deleteElement, selectElement, setDraftElement, setIsDrawing]);
+  }, [selectedElementId, deleteElement, selectElement, setDraftElement, setIsDrawing, userRole, documentId]);
 
   const zoomAtPoint = (pointer, nextScale) => {
     const oldScale = scale;
@@ -428,6 +585,7 @@ function CanvasBase() {
   };
 
   const handleStageMouseDown = (e) => {
+    if (userRole === "viewer") return;
     const stage = e.target.getStage();
     if (activeTool === "Stroke") {
       const pointer = stage.getPointerPosition();
@@ -453,9 +611,15 @@ function CanvasBase() {
   };
 
   const handleMouseMove = (e) => {
-    if (!isDrawing || !draftElement) return;
     const stage = e.target.getStage();
-    const pointer = stage.getPointerPosition();
+    const pointer = stage?.getPointerPosition();
+    if (pointer) {
+      const boardX = (pointer.x - position.x) / scale;
+      const boardY = (pointer.y - position.y) / scale;
+      emitCursorMove(boardX, boardY);
+    }
+
+    if (!isDrawing || !draftElement) return;
     if (!pointer) return;
     setDraftElement({
       ...draftElement,
@@ -486,7 +650,7 @@ function CanvasBase() {
       fill: item.fill,
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
-      draggable: !item.locked,
+      draggable: !item.locked && userRole !== "viewer",
       onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
@@ -520,7 +684,7 @@ function CanvasBase() {
       fill: item.fill,
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
-      draggable: !item.locked,
+      draggable: !item.locked && userRole !== "viewer",
       onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
@@ -553,7 +717,7 @@ function CanvasBase() {
       fill: item.fill,
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
-      draggable: !item.locked,
+      draggable: !item.locked && userRole !== "viewer",
       onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
@@ -586,7 +750,7 @@ function CanvasBase() {
       fill: item.fill,
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
-      draggable: !item.locked,
+      draggable: !item.locked && userRole !== "viewer",
       onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
@@ -619,7 +783,7 @@ function CanvasBase() {
       fill: item.stroke,
       stroke: item.stroke,
       strokeWidth: 0,
-      draggable: !item.locked,
+      draggable: !item.locked && userRole !== "viewer",
       onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
@@ -653,7 +817,7 @@ function CanvasBase() {
       width={item.width}
       fontSize={item.fontSize}
       fill={item.fill}
-      draggable={!item.locked}
+      draggable={!item.locked && userRole !== "viewer"}
       onDragEnd={(e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() })}
       onClick={() => handleShapeClick(item.id)}
       onTap={() => handleShapeClick(item.id)}
@@ -701,6 +865,33 @@ function CanvasBase() {
     />
   );
 
+  const renderImageElement = (item) => {
+    const commonProps = {
+      item,
+      isLocked: item.locked || userRole === "viewer",
+      onSelect: () => handleShapeClick(item.id),
+      onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
+      refCallback: (node) => {
+        if (node) objectRefs.current[item.id] = node;
+      },
+      onTransformEnd: (e) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        const scaleY = node.scaleY();
+        updateItem(item.id, {
+          x: node.x(),
+          y: node.y(),
+          width: Math.max(30, (item.width || 200) * scaleX),
+          height: Math.max(30, (item.height || 200) * scaleY),
+          rotation: node.rotation(),
+        });
+        node.scaleX(1);
+        node.scaleY(1);
+      },
+    };
+    return <CanvasImage key={item.id} {...commonProps} />;
+  };
+
   const renderItem = (item) => {
     if (!item.visible) return null;
     switch (item.type) {
@@ -719,6 +910,8 @@ function CanvasBase() {
         return renderTextItem(item);
       case "path":
         return renderPathItem(item);
+      case "image":
+        return renderImageElement(item);
       default:
         return null;
     }
@@ -759,6 +952,106 @@ function CanvasBase() {
         />
 
         <div ref={boardRef} className="canvas-base__board">
+          {/* Live Collaborators Circle Header */}
+          <div
+            style={{
+              position: "absolute",
+              top: "18px",
+              right: "18px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+              zIndex: 100,
+            }}
+          >
+            {collaborators.map((u) => {
+              const initial = u.user?.email ? u.user.email.charAt(0).toUpperCase() : "?";
+              const color = u.user?.color || "#3b82f6";
+              return (
+                <div
+                  key={u.socketId}
+                  title={`${u.user?.email || "Anonymous"} (${u.user?.role || "collaborator"})`}
+                  style={{
+                    width: "32px",
+                    height: "32px",
+                    borderRadius: "50%",
+                    backgroundColor: color,
+                    color: "#ffffff",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontSize: "12px",
+                    fontWeight: "700",
+                    border: "2px solid #ffffff",
+                    boxShadow: "0 4px 10px rgba(15, 23, 42, 0.15)",
+                    cursor: "default",
+                  }}
+                >
+                  {initial}
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Collaborator Cursor Overlays */}
+          {collaborators.map((u) => {
+            if (!u.cursor) return null;
+            const left = position.x + u.cursor.x * scale;
+            const top = position.y + u.cursor.y * scale;
+            const cursorColor = u.user?.color || "#3b82f6";
+            return (
+              <div
+                key={u.socketId}
+                style={{
+                  position: "absolute",
+                  left: `${left}px`,
+                  top: `${top}px`,
+                  pointerEvents: "none",
+                  transform: "translate(-2px, -2px)",
+                  zIndex: 99,
+                  display: "flex",
+                  flexDirection: "column",
+                  alignItems: "flex-start",
+                  transition: "left 0.08s ease-out, top 0.08s ease-out",
+                }}
+              >
+                <svg
+                  width="24"
+                  height="24"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  style={{
+                    color: cursorColor,
+                    filter: "drop-shadow(0 2px 4px rgba(15, 23, 42, 0.3))",
+                  }}
+                >
+                  <path
+                    d="M5.65376 12.3963L15.9327 2.11732C16.485 1.56503 17.4116 1.87977 17.5222 2.65342L18.9959 12.9691C19.0968 13.6756 18.3244 14.1953 17.6975 13.8291L13.784 11.5413L10.3705 14.9548C9.98 15.3453 9.34683 15.3453 8.95631 14.9548L5.65376 13.6523C5.07476 13.4243 5.07476 12.6243 5.65376 12.3963Z"
+                    fill="currentColor"
+                    stroke="#ffffff"
+                    strokeWidth="2"
+                  />
+                </svg>
+                <div
+                  style={{
+                    marginLeft: "12px",
+                    marginTop: "12px",
+                    backgroundColor: cursorColor,
+                    color: "#ffffff",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                    padding: "2px 8px",
+                    borderRadius: "4px",
+                    whiteSpace: "nowrap",
+                    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.25)",
+                  }}
+                >
+                  {u.user?.email || "Anonymous"}
+                </div>
+              </div>
+            );
+          })}
+
           {stageSize.width > 0 && stageSize.height > 0 && (
             <Stage
               ref={stageRef}
@@ -793,7 +1086,7 @@ function CanvasBase() {
                 />
                 {elements.map((item) => renderItem(item))}
                 {draftElement && renderPathItem(draftElement)}
-                {selectedElementId && (
+                {selectedElementId && userRole !== "viewer" && (
                   <Transformer
                     key={elements.find((el) => el.id === selectedElementId)?.type === "text" ? "text-transformer" : "shape-transformer"}
                     ref={transformerRef}
