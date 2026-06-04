@@ -1,3 +1,5 @@
 node_modules/
 .env
 src/db/documents.json
+src/db/users.json
+src/db/versions.json

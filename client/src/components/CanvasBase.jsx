@@ -3,6 +3,7 @@ import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer } f
 import SideMenu from "./SideMenu";
 import { useStore } from "../store/useStore";
 import { updateDocument } from "../api/documents";
+import { refreshSession } from "../api/auth";
 
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
@@ -73,29 +74,81 @@ function CanvasBase() {
   const documentId = useStore((state) => state.documentId);
   const documentName = useStore((state) => state.documentName);
   const serializeDocument = useStore((state) => state.serializeDocument);
-  const setIsSaving = useStore((state) => state.setIsSaving);
+  const documentVersion = useStore((state) => state.documentVersion);
+  const isDirty = useStore((state) => state.isDirty);
+  const saveStatus = useStore((state) => state.saveStatus);
+  const setSaveStatus = useStore((state) => state.setSaveStatus);
+  const user = useStore((state) => state.user);
+  const setUser = useStore((state) => state.setUser);
+  const setAccessToken = useStore((state) => state.setAccessToken);
+  const setAuthReady = useStore((state) => state.setAuthReady);
+
+  // Restore active session on mount
+  useEffect(() => {
+    const restoreSession = async () => {
+      try {
+        const data = await refreshSession();
+        setUser(data.user);
+        setAccessToken(data.accessToken);
+      } catch (err) {
+        console.log("No active session to restore.", err);
+      } finally {
+        setAuthReady(true);
+      }
+    };
+    restoreSession();
+  }, [setUser, setAccessToken, setAuthReady]);
 
   // Debounced autosave effect
   useEffect(() => {
-    if (!documentId) return;
+    if (!user || !documentId || !isDirty) return;
 
     const timeoutId = setTimeout(async () => {
       try {
-        setIsSaving(true);
+        setSaveStatus("saving");
         const payload = {
           name: documentName,
           data: serializeDocument(),
+          version: documentVersion,
+          manual: false, // autosave
         };
-        await updateDocument(documentId, payload);
+        const updatedDoc = await updateDocument(documentId, payload);
+        useStore.setState({
+          isDirty: false,
+          saveStatus: "saved",
+          documentVersion: updatedDoc.version,
+          saveError: null,
+        });
       } catch (e) {
         console.error("Autosave failed:", e);
-      } finally {
-        setIsSaving(false);
+        if (e.message === "conflict") {
+          useStore.setState({
+            saveStatus: "conflict",
+            saveError: "Version conflict: This design has been updated elsewhere. Please reload or duplicate.",
+          });
+        } else {
+          useStore.setState({
+            saveStatus: "error",
+            saveError: e.message || "Autosave failed",
+          });
+        }
       }
     }, 1500);
 
     return () => clearTimeout(timeoutId);
-  }, [elements, boardWidth, boardHeight, boardColor, documentName, documentId, serializeDocument, setIsSaving]);
+  }, [
+    user,
+    documentId,
+    isDirty,
+    elements,
+    boardWidth,
+    boardHeight,
+    boardColor,
+    documentName,
+    documentVersion,
+    serializeDocument,
+    setSaveStatus,
+  ]);
 
   // Set up resize observer to keep canvas responsive
   useEffect(() => {
@@ -760,6 +813,59 @@ function CanvasBase() {
               </Layer>
             </Stage>
           )}
+
+          {user && documentId && (() => {
+            let badgeText;
+            let badgeColor;
+            let badgeBg = "rgba(15, 23, 42, 0.82)";
+
+            if (saveStatus === "saving") {
+              badgeText = "Saving...";
+              badgeColor = "#3b82f6";
+            } else if (saveStatus === "conflict") {
+              badgeText = "⚠ Version Conflict";
+              badgeColor = "#ef4444";
+              badgeBg = "rgba(239, 68, 68, 0.15)";
+            } else if (saveStatus === "error") {
+              badgeText = "⚠ Save Failed";
+              badgeColor = "#ef4444";
+            } else if (saveStatus === "saved" && !isDirty) {
+              badgeText = "✓ Saved";
+              badgeColor = "#10b981";
+            } else if (isDirty) {
+              badgeText = "Unsaved Changes";
+              badgeColor = "#f59e0b";
+            } else {
+              badgeText = "✓ Saved";
+              badgeColor = "#10b981";
+            }
+
+            return (
+              <div
+                style={{
+                  position: "absolute",
+                  left: "18px",
+                  bottom: "18px",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "8px 14px",
+                  borderRadius: "999px",
+                  background: badgeBg,
+                  backdropFilter: "blur(8px)",
+                  boxShadow: "0 10px 24px rgba(15, 23, 42, 0.2)",
+                  color: badgeColor,
+                  fontSize: "12px",
+                  fontWeight: "700",
+                  pointerEvents: "none",
+                  border: saveStatus === "conflict" ? "1px solid #ef4444" : "1px solid rgba(255,255,255,0.08)",
+                  transition: "all 0.3s ease",
+                  zIndex: 10,
+                }}
+              >
+                {badgeText}
+              </div>
+            );
+          })()}
 
           <div className="canvas-base__zoom-panel">
             <button type="button" className="zoom-btn" onClick={handleZoomOut}>

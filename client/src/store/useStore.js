@@ -58,16 +58,25 @@ const pushState = (state, patch) => {
   const nextHistory = state.history.slice(0, state.historyIndex + 1);
   return {
     ...patch,
+    isDirty: true,
+    saveStatus: "idle",
     history: [...nextHistory, snapshot],
     historyIndex: nextHistory.length,
   };
 };
 
 export const useStore = create((set, get) => ({
+  // User & Session Authentication
+  user: null,
+  accessToken: null,
+  isAuthReady: false,
+
   // Persistent document metadata
   documentId: null,
   documentName: "Untitled Design",
-  isSaving: false,
+  documentVersion: 1, // keeps track of DB version
+  isDirty: false,
+  saveStatus: "idle", // "idle" | "saving" | "saved" | "error" | "conflict"
   saveError: null,
 
   // Persistent document state
@@ -101,6 +110,8 @@ export const useStore = create((set, get) => ({
       const snapshot = state.history[nextIndex];
       return {
         historyIndex: nextIndex,
+        isDirty: true,
+        saveStatus: "idle",
         ...loadSnapshot(snapshot),
       };
     }),
@@ -112,6 +123,8 @@ export const useStore = create((set, get) => ({
       const snapshot = state.history[nextIndex];
       return {
         historyIndex: nextIndex,
+        isDirty: true,
+        saveStatus: "idle",
         ...loadSnapshot(snapshot),
       };
     }),
@@ -126,10 +139,19 @@ export const useStore = create((set, get) => ({
   setDraftElement: (draft) => set({ draftElement: draft }),
 
   // Document metadata actions
-  setDocumentName: (name) => set({ documentName: name }),
+  setDocumentName: (name) => set({ documentName: name, isDirty: true, saveStatus: "idle" }),
   setDocumentId: (id) => set({ documentId: id }),
-  setIsSaving: (isSaving) => set({ isSaving }),
+  setIsSaving: (isSaving) => set({ saveStatus: isSaving ? "saving" : get().saveStatus }),
+  setSaveStatus: (status) => set({ saveStatus: status }),
   setSaveError: (error) => set({ saveError: error }),
+  setDocumentVersion: (version) => set({ documentVersion: version }),
+
+  // Auth actions
+  setUser: (user) => set({ user }),
+  setAccessToken: (accessToken) => set({ accessToken }),
+  setAuthReady: (isAuthReady) => set({ isAuthReady }),
+
+  logoutUser: () => set({ user: null, accessToken: null, documentId: null, elements: [], history: [initialSnapshot], historyIndex: 0, isDirty: false, saveStatus: "idle" }),
 
   serializeDocument: () => {
     const state = get();
@@ -158,6 +180,7 @@ export const useStore = create((set, get) => ({
     set({
       documentId: doc.id,
       documentName: doc.name,
+      documentVersion: doc.version || 1,
       boardWidth: doc.data.boardWidth,
       boardHeight: doc.data.boardHeight,
       backgroundColor: doc.data.backgroundColor,
@@ -165,6 +188,8 @@ export const useStore = create((set, get) => ({
       elements: loadedSnapshot.elements,
       history: [loadedSnapshot],
       historyIndex: 0,
+      isDirty: false,
+      saveStatus: "saved",
       saveError: null,
     });
   },
@@ -180,6 +205,7 @@ export const useStore = create((set, get) => ({
     set({
       documentId: null,
       documentName: "Untitled Design",
+      documentVersion: 1,
       boardWidth: 2200,
       boardHeight: 1400,
       backgroundColor: "#ffffff",
@@ -187,6 +213,8 @@ export const useStore = create((set, get) => ({
       elements: [],
       history: [freshSnapshot],
       historyIndex: 0,
+      isDirty: false,
+      saveStatus: "idle",
       saveError: null,
     });
   },

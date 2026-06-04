@@ -1,6 +1,15 @@
 import { useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
-import { createDocument, updateDocument, listDocuments, deleteDocument, getDocument } from "../api/documents";
+import {
+  createDocument,
+  updateDocument,
+  listDocuments,
+  deleteDocument,
+  getDocument,
+  listVersions,
+  restoreVersion,
+} from "../api/documents";
+import { registerUser, loginUser, logoutUser as apiLogout } from "../api/auth";
 
 const toolOptions = [
   "Shapes",
@@ -320,20 +329,39 @@ function LayersPanel() {
 function DesignsPanel() {
   const documentId = useStore((state) => state.documentId);
   const documentName = useStore((state) => state.documentName);
+  const documentVersion = useStore((state) => state.documentVersion);
   const setDocumentName = useStore((state) => state.setDocumentName);
-  const isSaving = useStore((state) => state.isSaving);
-  const setIsSaving = useStore((state) => state.setIsSaving);
+  const saveStatus = useStore((state) => state.saveStatus);
+  const setSaveStatus = useStore((state) => state.setSaveStatus);
   const saveError = useStore((state) => state.saveError);
   const setSaveError = useStore((state) => state.setSaveError);
   const serializeDocument = useStore((state) => state.serializeDocument);
   const loadDocument = useStore((state) => state.loadDocument);
   const resetDocument = useStore((state) => state.resetDocument);
 
+  // Auth states & actions
+  const user = useStore((state) => state.user);
+  const setUser = useStore((state) => state.setUser);
+  const setAccessToken = useStore((state) => state.setAccessToken);
+  const logoutUserStore = useStore((state) => state.logoutUser);
+
   const [designs, setDesigns] = useState([]);
   const [loadingList, setLoadingList] = useState(false);
-  const [saveStatus, setSaveStatus] = useState("");
+
+  // Version history state
+  const [versions, setVersions] = useState([]);
+  const [loadingVersions, setLoadingVersions] = useState(false);
+
+  // Form tab: 'login' | 'register'
+  const [authTab, setAuthTab] = useState("login");
+  const [emailInput, setEmailInput] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [authError, setAuthError] = useState("");
+
+  const isSaving = saveStatus === "saving";
 
   const fetchDesigns = async () => {
+    if (!user) return;
     try {
       setLoadingList(true);
       const list = await listDocuments();
@@ -345,36 +373,67 @@ function DesignsPanel() {
     }
   };
 
+  const fetchVersions = async () => {
+    if (!user || !documentId) {
+      setVersions([]);
+      return;
+    }
+    try {
+      setLoadingVersions(true);
+      const list = await listVersions(documentId);
+      setVersions(list);
+    } catch (e) {
+      console.error("Error loading versions:", e);
+    } finally {
+      setLoadingVersions(false);
+    }
+  };
+
   useEffect(() => {
-    requestAnimationFrame(() => {
-      fetchDesigns();
-    });
-  }, [documentId]);
+    const timer = setTimeout(() => {
+      if (user) {
+        fetchDesigns();
+        fetchVersions();
+      } else {
+        setDesigns([]);
+        setVersions([]);
+      }
+    }, 0);
+
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [documentId, user]);
 
   const handleSave = async () => {
     try {
-      setIsSaving(true);
       setSaveStatus("saving");
       setSaveError(null);
       const payload = {
         name: documentName.trim() || "Untitled Design",
         data: serializeDocument(),
+        version: documentId ? documentVersion : undefined,
+        manual: true, // Manual save creates a snapshot
       };
 
       if (documentId) {
-        await updateDocument(documentId, payload);
-        setSaveStatus("saved");
+        const doc = await updateDocument(documentId, payload);
+        loadDocument(doc);
       } else {
         const doc = await createDocument(payload);
         loadDocument(doc);
-        setSaveStatus("saved");
       }
+      setSaveStatus("saved");
+      fetchVersions();
+      fetchDesigns();
       setTimeout(() => setSaveStatus(""), 3000);
     } catch (e) {
-      setSaveError(e.message);
-      setSaveStatus("error");
-    } finally {
-      setIsSaving(false);
+      if (e.message === "conflict") {
+        setSaveStatus("conflict");
+        setSaveError("Version conflict: This design has been updated elsewhere.");
+      } else {
+        setSaveError(e.message);
+        setSaveStatus("error");
+      }
     }
   };
 
@@ -408,8 +467,124 @@ function DesignsPanel() {
     }
   };
 
+  const handleAuthSubmit = async (e) => {
+    e.preventDefault();
+    setAuthError("");
+    const email = emailInput.trim();
+    const password = passwordInput;
+
+    if (!email || !password) {
+      setAuthError("Email and password are required");
+      return;
+    }
+
+    try {
+      if (authTab === "login") {
+        const data = await loginUser(email, password);
+        setUser(data.user);
+        setAccessToken(data.accessToken);
+      } else {
+        const data = await registerUser(email, password);
+        setUser(data.user);
+        setAccessToken(data.accessToken);
+      }
+      setEmailInput("");
+      setPasswordInput("");
+    } catch (err) {
+      setAuthError(err.message || "Authentication failed");
+    }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await apiLogout();
+    } catch (err) {
+      console.error("Logout API call failed:", err);
+    } finally {
+      logoutUserStore();
+      setDesigns([]);
+      setVersions([]);
+    }
+  };
+
+  const handleRestore = async (versionId) => {
+    try {
+      const doc = await restoreVersion(documentId, versionId);
+      loadDocument(doc);
+      fetchVersions();
+    } catch (err) {
+      alert("Failed to restore version: " + err.message);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="side-menu__panel auth-form-container">
+        <p className="side-menu__panel-title">Sign In / Register</p>
+        <div className="auth-tabs">
+          <button
+            type="button"
+            className={`auth-tab-btn ${authTab === "login" ? "auth-tab-btn--active" : ""}`}
+            onClick={() => {
+              setAuthTab("login");
+              setAuthError("");
+            }}
+          >
+            Login
+          </button>
+          <button
+            type="button"
+            className={`auth-tab-btn ${authTab === "register" ? "auth-tab-btn--active" : ""}`}
+            onClick={() => {
+              setAuthTab("register");
+              setAuthError("");
+            }}
+          >
+            Register
+          </button>
+        </div>
+
+        <form className="auth-form" onSubmit={handleAuthSubmit}>
+          <div className="side-menu__field">
+            <span>Email</span>
+            <input
+              type="email"
+              value={emailInput}
+              onChange={(e) => setEmailInput(e.target.value)}
+              placeholder="name@example.com"
+              required
+            />
+          </div>
+          <div className="side-menu__field">
+            <span>Password</span>
+            <input
+              type="password"
+              value={passwordInput}
+              onChange={(e) => setPasswordInput(e.target.value)}
+              placeholder="••••••••"
+              required
+            />
+          </div>
+
+          {authError && <p className="design-error-text">{authError}</p>}
+
+          <button type="submit" className="auth-submit-btn">
+            {authTab === "login" ? "Login" : "Register"}
+          </button>
+        </form>
+      </div>
+    );
+  }
+
   return (
     <div className="side-menu__panel">
+      <div className="user-profile-badge">
+        <span className="user-email-text" title={user.email}>{user.email}</span>
+        <button type="button" className="logout-btn" onClick={handleLogout}>
+          Log Out
+        </button>
+      </div>
+
       <p className="side-menu__panel-title">My Designs</p>
 
       <div className="design-meta-form">
@@ -425,10 +600,15 @@ function DesignsPanel() {
         </div>
 
         <div className="design-action-buttons">
-          <button className="design-btn design-btn--save" onClick={handleSave} disabled={isSaving}>
+          <button
+            type="button"
+            className="design-btn design-btn--save"
+            onClick={handleSave}
+            disabled={isSaving}
+          >
             {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "✓ Saved" : "Save Design"}
           </button>
-          <button className="design-btn design-btn--new" onClick={handleNew}>
+          <button type="button" className="design-btn design-btn--new" onClick={handleNew}>
             New Blank
           </button>
         </div>
@@ -452,7 +632,7 @@ function DesignsPanel() {
               <div className="design-info">
                 <span className="design-title">{design.name}</span>
                 <span className="design-date">
-                  {new Date(design.updated_at).toLocaleDateString()}
+                  {new Date(design.updated_at).toLocaleDateString()} (v{design.version})
                 </span>
               </div>
               <button
@@ -465,6 +645,37 @@ function DesignsPanel() {
               </button>
             </div>
           ))}
+        </div>
+      )}
+
+      {documentId && (
+        <div className="versions-section">
+          <p className="side-menu__panel-title">Version History</p>
+          {loadingVersions ? (
+            <p className="side-menu__panel-hint">Loading versions...</p>
+          ) : versions.length === 0 ? (
+            <p className="side-menu__panel-hint">No versions recorded.</p>
+          ) : (
+            <div className="versions-list">
+              {versions.map((v) => (
+                <div key={v.id} className="version-item">
+                  <div>
+                    <span className="version-num">v{v.version_number}</span>
+                    <div className="version-time">
+                      {new Date(v.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    className="version-restore-btn"
+                    onClick={() => handleRestore(v.id)}
+                  >
+                    Restore
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
     </div>
