@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer } from "react-konva";
 import SideMenu from "./SideMenu";
 import { useStore } from "../store/useStore";
+import { updateDocument } from "../api/documents";
 
 const MIN_SCALE = 0.4;
 const MAX_SCALE = 3;
@@ -68,6 +69,33 @@ function CanvasBase() {
   const setBackgroundColor = useStore((state) => state.setBackgroundColor);
   const setBoardWidth = useStore((state) => state.setBoardWidth);
   const setBoardHeight = useStore((state) => state.setBoardHeight);
+
+  const documentId = useStore((state) => state.documentId);
+  const documentName = useStore((state) => state.documentName);
+  const serializeDocument = useStore((state) => state.serializeDocument);
+  const setIsSaving = useStore((state) => state.setIsSaving);
+
+  // Debounced autosave effect
+  useEffect(() => {
+    if (!documentId) return;
+
+    const timeoutId = setTimeout(async () => {
+      try {
+        setIsSaving(true);
+        const payload = {
+          name: documentName,
+          data: serializeDocument(),
+        };
+        await updateDocument(documentId, payload);
+      } catch (e) {
+        console.error("Autosave failed:", e);
+      } finally {
+        setIsSaving(false);
+      }
+    }, 1500);
+
+    return () => clearTimeout(timeoutId);
+  }, [elements, boardWidth, boardHeight, boardColor, documentName, documentId, serializeDocument, setIsSaving]);
 
   // Set up resize observer to keep canvas responsive
   useEffect(() => {

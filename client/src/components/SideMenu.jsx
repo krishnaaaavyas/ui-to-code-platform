@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
+import { createDocument, updateDocument, listDocuments, deleteDocument, getDocument } from "../api/documents";
 
 const toolOptions = [
   "Shapes",
@@ -7,6 +8,7 @@ const toolOptions = [
   "Background",
   "Stroke",
   "Layers",
+  "Designs",
 ];
 
 const shapeOptions = [
@@ -315,6 +317,160 @@ function LayersPanel() {
   );
 }
 
+function DesignsPanel() {
+  const documentId = useStore((state) => state.documentId);
+  const documentName = useStore((state) => state.documentName);
+  const setDocumentName = useStore((state) => state.setDocumentName);
+  const isSaving = useStore((state) => state.isSaving);
+  const setIsSaving = useStore((state) => state.setIsSaving);
+  const saveError = useStore((state) => state.saveError);
+  const setSaveError = useStore((state) => state.setSaveError);
+  const serializeDocument = useStore((state) => state.serializeDocument);
+  const loadDocument = useStore((state) => state.loadDocument);
+  const resetDocument = useStore((state) => state.resetDocument);
+
+  const [designs, setDesigns] = useState([]);
+  const [loadingList, setLoadingList] = useState(false);
+  const [saveStatus, setSaveStatus] = useState("");
+
+  const fetchDesigns = async () => {
+    try {
+      setLoadingList(true);
+      const list = await listDocuments();
+      setDesigns(list);
+    } catch (e) {
+      console.error("Error loading designs:", e);
+    } finally {
+      setLoadingList(false);
+    }
+  };
+
+  useEffect(() => {
+    requestAnimationFrame(() => {
+      fetchDesigns();
+    });
+  }, [documentId]);
+
+  const handleSave = async () => {
+    try {
+      setIsSaving(true);
+      setSaveStatus("saving");
+      setSaveError(null);
+      const payload = {
+        name: documentName.trim() || "Untitled Design",
+        data: serializeDocument(),
+      };
+
+      if (documentId) {
+        await updateDocument(documentId, payload);
+        setSaveStatus("saved");
+      } else {
+        const doc = await createDocument(payload);
+        loadDocument(doc);
+        setSaveStatus("saved");
+      }
+      setTimeout(() => setSaveStatus(""), 3000);
+    } catch (e) {
+      setSaveError(e.message);
+      setSaveStatus("error");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleNew = () => {
+    resetDocument();
+    setSaveStatus("");
+  };
+
+  const handleLoad = async (id) => {
+    try {
+      setSaveStatus("loading");
+      const doc = await getDocument(id);
+      loadDocument(doc);
+      setSaveStatus("");
+    } catch (e) {
+      alert("Failed to load design: " + e.message);
+    }
+  };
+
+  const handleDelete = async (id, e) => {
+    e.stopPropagation();
+    if (!window.confirm("Are you sure you want to delete this design?")) return;
+    try {
+      await deleteDocument(id);
+      if (documentId === id) {
+        resetDocument();
+      }
+      fetchDesigns();
+    } catch (e) {
+      alert("Failed to delete design: " + e.message);
+    }
+  };
+
+  return (
+    <div className="side-menu__panel">
+      <p className="side-menu__panel-title">My Designs</p>
+
+      <div className="design-meta-form">
+        <div className="side-menu__field">
+          <span>Design Name</span>
+          <input
+            type="text"
+            className="design-name-input"
+            value={documentName}
+            onChange={(e) => setDocumentName(e.target.value)}
+            placeholder="Untitled Design"
+          />
+        </div>
+
+        <div className="design-action-buttons">
+          <button className="design-btn design-btn--save" onClick={handleSave} disabled={isSaving}>
+            {saveStatus === "saving" ? "Saving..." : saveStatus === "saved" ? "✓ Saved" : "Save Design"}
+          </button>
+          <button className="design-btn design-btn--new" onClick={handleNew}>
+            New Blank
+          </button>
+        </div>
+
+        {saveError && <p className="design-error-text">Error: {saveError}</p>}
+      </div>
+
+      <p className="side-menu__panel-title" style={{ marginTop: "16px" }}>Saved Designs</p>
+      {loadingList ? (
+        <p className="side-menu__panel-hint">Loading designs list...</p>
+      ) : designs.length === 0 ? (
+        <p className="side-menu__panel-hint">No saved designs found.</p>
+      ) : (
+        <div className="designs-list">
+          {designs.map((design) => (
+            <div
+              key={design.id}
+              className={`design-list-item ${documentId === design.id ? "design-list-item--active" : ""}`}
+              onClick={() => handleLoad(design.id)}
+            >
+              <div className="design-info">
+                <span className="design-title">{design.name}</span>
+                <span className="design-date">
+                  {new Date(design.updated_at).toLocaleDateString()}
+                </span>
+              </div>
+              <button
+                type="button"
+                className="design-remove-btn"
+                onClick={(e) => handleDelete(design.id, e)}
+                title="Delete design"
+              >
+                ✕
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SideMenu({
   collapsed,
   onToggle,
@@ -357,6 +513,8 @@ function SideMenu({
         return <StrokePanel selectedStroke={selectedStroke} onStrokeChange={onStrokeChange} />;
       case "Layers":
         return <LayersPanel />;
+      case "Designs":
+        return <DesignsPanel />;
       default:
         return null;
     }

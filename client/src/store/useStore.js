@@ -64,6 +64,12 @@ const pushState = (state, patch) => {
 };
 
 export const useStore = create((set, get) => ({
+  // Persistent document metadata
+  documentId: null,
+  documentName: "Untitled Design",
+  isSaving: false,
+  saveError: null,
+
   // Persistent document state
   boardWidth: 2200,
   boardHeight: 1400,
@@ -118,6 +124,72 @@ export const useStore = create((set, get) => ({
   setEditingTextId: (id) => set({ editingTextId: id }),
   setTransformingId: (id) => set({ transformingId: id }),
   setDraftElement: (draft) => set({ draftElement: draft }),
+
+  // Document metadata actions
+  setDocumentName: (name) => set({ documentName: name }),
+  setDocumentId: (id) => set({ documentId: id }),
+  setIsSaving: (isSaving) => set({ isSaving }),
+  setSaveError: (error) => set({ saveError: error }),
+
+  serializeDocument: () => {
+    const state = get();
+    return {
+      boardWidth: state.boardWidth,
+      boardHeight: state.boardHeight,
+      backgroundColor: state.backgroundColor,
+      elements: state.elements.map((el) => ({
+        ...el,
+        points: el.points ? [...el.points] : undefined,
+      })),
+    };
+  },
+
+  loadDocument: (doc) => {
+    const loadedSnapshot = {
+      boardWidth: doc.data.boardWidth,
+      boardHeight: doc.data.boardHeight,
+      backgroundColor: doc.data.backgroundColor,
+      selectedElementId: null,
+      elements: doc.data.elements.map((el) => ({
+        ...el,
+        points: el.points ? [...el.points] : undefined,
+      })),
+    };
+    set({
+      documentId: doc.id,
+      documentName: doc.name,
+      boardWidth: doc.data.boardWidth,
+      boardHeight: doc.data.boardHeight,
+      backgroundColor: doc.data.backgroundColor,
+      selectedElementId: null,
+      elements: loadedSnapshot.elements,
+      history: [loadedSnapshot],
+      historyIndex: 0,
+      saveError: null,
+    });
+  },
+
+  resetDocument: () => {
+    const freshSnapshot = {
+      boardWidth: 2200,
+      boardHeight: 1400,
+      backgroundColor: "#ffffff",
+      selectedElementId: null,
+      elements: [],
+    };
+    set({
+      documentId: null,
+      documentName: "Untitled Design",
+      boardWidth: 2200,
+      boardHeight: 1400,
+      backgroundColor: "#ffffff",
+      selectedElementId: null,
+      elements: [],
+      history: [freshSnapshot],
+      historyIndex: 0,
+      saveError: null,
+    });
+  },
 
   // Document state actions
   addElement: (element) =>
