@@ -5,6 +5,7 @@ import CodePreviewPanel from "./CodePreviewPanel";
 import { useStore } from "../store/useStore";
 import { updateDocument } from "../api/documents";
 import { generateCodeFromCanvas, refineGeneratedCode } from "../api/ai";
+import { transformCanvasToSchema } from "../lib/transformCanvasToSchema";
 import { refreshSession } from "../api/auth";
 import { io } from "socket.io-client";
 
@@ -126,6 +127,8 @@ function CanvasBase() {
   const [codeGenLoading, setCodeGenLoading] = useState(false);
   const [codeGenResult, setCodeGenResult] = useState(null);
   const [codeGenError, setCodeGenError] = useState(null);
+  const [isSchemaInspectorOpen, setIsSchemaInspectorOpen] = useState(false);
+  const [localSchema, setLocalSchema] = useState(null);
 
   const handleGenerateCode = useCallback(async () => {
     if (elements.length === 0) {
@@ -186,6 +189,13 @@ function CanvasBase() {
       setCodeGenLoading(false);
     }
   }, [codeGenResult]);
+
+  const handleInspectSchema = useCallback(() => {
+    const doc = serializeDocument();
+    const schema = transformCanvasToSchema(doc);
+    setLocalSchema(schema);
+    setIsSchemaInspectorOpen(true);
+  }, [serializeDocument]);
 
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
@@ -1259,6 +1269,43 @@ function CanvasBase() {
                 )}
               </button>
             )}
+            {/* Inspect UI Schema button */}
+            {user && (
+              <button
+                id="inspect-schema-btn"
+                type="button"
+                onClick={handleInspectSchema}
+                title="Inspect raw frontend-transformed UI Schema"
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "7px",
+                  padding: "7px 14px",
+                  borderRadius: "10px",
+                  background: "rgba(255, 255, 255, 0.05)",
+                  border: "1px solid rgba(255, 255, 255, 0.12)",
+                  color: "#cbd5e1",
+                  fontSize: "12px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  letterSpacing: "0.03em",
+                  transition: "all 0.2s ease",
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
+                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
+                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
+                }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                </svg>
+                Inspect Schema
+              </button>
+            )}
             {collaborators.map((u) => {
               const initial = u.user?.email ? u.user.email.charAt(0).toUpperCase() : "?";
               const color = u.user?.color || "#3b82f6";
@@ -1484,6 +1531,139 @@ function CanvasBase() {
             </button>
           </div>
         </div>
+
+        {/* Schema Inspector Modal */}
+        {isSchemaInspectorOpen && (
+          <>
+            <div
+              onClick={() => setIsSchemaInspectorOpen(false)}
+              style={{
+                position: "fixed",
+                inset: 0,
+                background: "rgba(0,0,0,0.6)",
+                backdropFilter: "blur(6px)",
+                zIndex: 1000,
+              }}
+            />
+            <div
+              style={{
+                position: "fixed",
+                top: "50%",
+                left: "50%",
+                transform: "translate(-50%, -50%)",
+                width: "min(640px, 90vw)",
+                maxHeight: "80vh",
+                background: "linear-gradient(160deg, #0f172a 0%, #0b1120 100%)",
+                border: "1px solid rgba(255,255,255,0.08)",
+                borderRadius: "16px",
+                boxShadow: "0 20px 50px rgba(0,0,0,0.5)",
+                zIndex: 1001,
+                display: "flex",
+                flexDirection: "column",
+                overflow: "hidden",
+              }}
+            >
+              {/* Header */}
+              <div
+                style={{
+                  padding: "16px 20px",
+                  borderBottom: "1px solid rgba(255,255,255,0.07)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  background: "rgba(255,255,255,0.01)",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                  <div
+                    style={{
+                      width: "30px",
+                      height: "30px",
+                      borderRadius: "8px",
+                      background: "rgba(99,102,241,0.15)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                    }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5">
+                      <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                    </svg>
+                  </div>
+                  <span style={{ fontSize: "14px", fontWeight: "700", color: "#f1f5f9" }}>
+                    UI Schema Inspector
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsSchemaInspectorOpen(false)}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#64748b",
+                    cursor: "pointer",
+                  }}
+                >
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+
+              {/* Content */}
+              <div style={{ flex: 1, overflow: "auto", padding: "20px" }}>
+                <p style={{ margin: "0 0 12px", fontSize: "12px", color: "#64748b", lineHeight: "1.5" }}>
+                  This is the raw, frontend-extracted semantic AST generated by the canvas transformer. It is normalized and enriched downstream by the AI generation pipeline.
+                </p>
+                <pre
+                  style={{
+                    margin: 0,
+                    padding: "14px",
+                    background: "rgba(8,12,22,0.7)",
+                    border: "1px solid rgba(255,255,255,0.06)",
+                    borderRadius: "10px",
+                    fontSize: "11px",
+                    color: "#cbd5e1",
+                    fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                    overflowX: "auto",
+                    maxHeight: "380px",
+                  }}
+                >
+                  {JSON.stringify(localSchema, null, 2)}
+                </pre>
+              </div>
+
+              {/* Footer */}
+              <div
+                style={{
+                  padding: "14px 20px",
+                  borderTop: "1px solid rgba(255,255,255,0.07)",
+                  background: "rgba(255,255,255,0.01)",
+                  display: "flex",
+                  justifyContent: "flex-end",
+                }}
+              >
+                <button
+                  type="button"
+                  onClick={() => setIsSchemaInspectorOpen(false)}
+                  style={{
+                    background: "rgba(255,255,255,0.06)",
+                    border: "1px solid rgba(255,255,255,0.12)",
+                    borderRadius: "8px",
+                    color: "#cbd5e1",
+                    padding: "6px 16px",
+                    fontSize: "12px",
+                    fontWeight: "600",
+                    cursor: "pointer",
+                  }}
+                >
+                  Close
+                </button>
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </section>
   );

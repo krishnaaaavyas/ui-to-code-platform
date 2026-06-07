@@ -29,9 +29,9 @@ exports.generateCode = async (req, res, next) => {
       const docData = doc.data || {};
       elements = docData.elements || [];
       boardConfig = {
-        boardWidth: docData.boardWidth,
-        boardHeight: docData.boardHeight,
-        backgroundColor: docData.backgroundColor,
+        boardWidth: docData.boardSettings?.boardWidth ?? docData.boardWidth,
+        boardHeight: docData.boardSettings?.boardHeight ?? docData.boardHeight,
+        backgroundColor: docData.boardSettings?.backgroundColor ?? docData.backgroundColor,
       };
     } else {
       // Option B: Accept elements directly in body
@@ -89,9 +89,9 @@ exports.getSchema = async (req, res, next) => {
       const docData = doc.data || {};
       elements = docData.elements || [];
       boardConfig = {
-        boardWidth: docData.boardWidth,
-        boardHeight: docData.boardHeight,
-        backgroundColor: docData.backgroundColor,
+        boardWidth: docData.boardSettings?.boardWidth ?? docData.boardWidth,
+        boardHeight: docData.boardSettings?.boardHeight ?? docData.boardHeight,
+        backgroundColor: docData.boardSettings?.backgroundColor ?? docData.backgroundColor,
       };
     } else {
       elements = req.body.elements || [];
@@ -140,9 +140,9 @@ exports.normalizeSchema = async (req, res, next) => {
         const docData = doc.data || {};
         elements = docData.elements || [];
         boardConfig = {
-          boardWidth: docData.boardWidth,
-          boardHeight: docData.boardHeight,
-          backgroundColor: docData.backgroundColor,
+          boardWidth: docData.boardSettings?.boardWidth ?? docData.boardWidth,
+          boardHeight: docData.boardSettings?.boardHeight ?? docData.boardHeight,
+          backgroundColor: docData.boardSettings?.backgroundColor ?? docData.backgroundColor,
         };
       } else {
         elements = req.body.elements || [];

@@ -62,11 +62,11 @@ function inferUiSchema(elements, boardConfig = {}) {
   // Identify all container shapes (rectangles)
   const containers = visibleElements.filter((el) => el.type === "rect" || el.type === "rectangle");
   
-  // Sort containers by area descending (largest first) to handle nested layout hierarchies correctly
+  // Sort containers by area ascending (smallest first) to handle nested layout hierarchies correctly
   const sortedContainers = [...containers].sort((a, b) => {
     const boxA = boundsMap.get(a.id);
     const boxB = boundsMap.get(b.id);
-    return boxB.width * boxB.height - boxA.width * boxA.height;
+    return boxA.width * boxA.height - boxB.width * boxB.height;
   });
 
   // Track parent-child relationships

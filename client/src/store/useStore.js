@@ -158,23 +158,46 @@ export const useStore = create((set, get) => ({
   serializeDocument: () => {
     const state = get();
     return {
-      boardWidth: state.boardWidth,
-      boardHeight: state.boardHeight,
-      backgroundColor: state.backgroundColor,
+      boardSettings: {
+        boardWidth: state.boardWidth,
+        boardHeight: state.boardHeight,
+        backgroundColor: state.backgroundColor,
+      },
       elements: state.elements.map((el) => ({
-        ...el,
+        id: el.id,
+        type: el.type,
+        x: el.x,
+        y: el.y,
+        width: el.width,
+        height: el.height,
+        radius: el.radius,
+        text: el.text,
+        fontSize: el.fontSize,
+        fill: el.fill,
+        stroke: el.stroke,
+        strokeWidth: el.strokeWidth,
         points: el.points ? [...el.points] : undefined,
+        rotation: el.rotation,
+        visible: el.visible !== false,
+        locked: !!el.locked,
+        name: el.name || el.type,
       })),
     };
   },
 
   loadDocument: (doc) => {
+    const data = doc.data || {};
+    const settings = data.boardSettings || {
+      boardWidth: data.boardWidth ?? 2200,
+      boardHeight: data.boardHeight ?? 1400,
+      backgroundColor: data.backgroundColor ?? "#ffffff",
+    };
     const loadedSnapshot = {
-      boardWidth: doc.data.boardWidth,
-      boardHeight: doc.data.boardHeight,
-      backgroundColor: doc.data.backgroundColor,
+      boardWidth: settings.boardWidth,
+      boardHeight: settings.boardHeight,
+      backgroundColor: settings.backgroundColor,
       selectedElementId: null,
-      elements: doc.data.elements.map((el) => ({
+      elements: (data.elements || []).map((el) => ({
         ...el,
         points: el.points ? [...el.points] : undefined,
       })),
@@ -184,9 +207,9 @@ export const useStore = create((set, get) => ({
       documentName: doc.name,
       documentVersion: doc.version || 1,
       userRole: doc.user_role || "owner",
-      boardWidth: doc.data.boardWidth,
-      boardHeight: doc.data.boardHeight,
-      backgroundColor: doc.data.backgroundColor,
+      boardWidth: settings.boardWidth,
+      boardHeight: settings.boardHeight,
+      backgroundColor: settings.backgroundColor,
       selectedElementId: null,
       elements: loadedSnapshot.elements,
       history: [loadedSnapshot],
