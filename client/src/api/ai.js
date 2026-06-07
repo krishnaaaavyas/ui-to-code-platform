@@ -39,3 +39,22 @@ export async function getDesignSchema(payload) {
 
   return res.json();
 }
+
+/**
+ * Refines the already generated React component code based on user prompt.
+ * @param {{ normalizedSchema: Object, files: Array, instruction: string, stack: string }} payload
+ * @returns {Promise<{ success: boolean, generated: Object }>}
+ */
+export async function refineGeneratedCode(payload) {
+  const res = await apiRequest(AI_BASE + "/refine-code", {
+    method: "POST",
+    body: JSON.stringify(payload),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error || "Code refinement failed");
+  }
+
+  return res.json();
+}

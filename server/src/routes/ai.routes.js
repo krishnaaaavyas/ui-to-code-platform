@@ -12,6 +12,7 @@ router.use(requireAuth);
  * Body: { elements, boardConfig } or { documentId }
  */
 router.post("/generate", controller.generateCode);
+router.post("/generate-code", controller.generateCode);
 
 /**
  * POST /api/ai/schema
@@ -20,5 +21,17 @@ router.post("/generate", controller.generateCode);
  * Body: { elements, boardConfig } or { documentId }
  */
 router.post("/schema", controller.getSchema);
+
+/**
+ * POST /api/ai/normalize-ui-schema
+ * Normalize raw UI schema using LLM
+ */
+router.post("/normalize-ui-schema", controller.normalizeSchema);
+
+/**
+ * POST /api/ai/refine-code
+ * Refine existing generated code
+ */
+router.post("/refine-code", controller.refineCode);
 
 module.exports = router;

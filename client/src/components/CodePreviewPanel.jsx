@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import JSZip from "jszip";
 
 // ─── Simple lightweight syntax highlighter (no external dep) ────────────────
 function highlight(code, lang) {
@@ -185,9 +186,9 @@ function CodeBlock({ file }) {
   );
 }
 
-// ─── Download all files as a zip-like blob ───────────────────────────────────
+// ─── Download file/blob helper ───────────────────────────────────────────────
 function downloadFile(content, filename, type = "text/plain") {
-  const blob = new Blob([content], { type });
+  const blob = content instanceof Blob ? content : new Blob([content], { type });
   const url = URL.createObjectURL(blob);
   const link = document.createElement("a");
   link.href = url;
@@ -210,19 +211,36 @@ function downloadFile(content, filename, type = "text/plain") {
  *   isLoading: boolean
  *   error: string | null
  */
-export default function CodePreviewPanel({ isOpen, onClose, result, isLoading, error }) {
+export default function CodePreviewPanel({ isOpen, onClose, result, isLoading, error, onRefine, onRegenerate }) {
   const [activeTab, setActiveTab] = useState("code"); // "code" | "schema" | "tokens"
   const [activeFileIndex, setActiveFileIndex] = useState(0);
+  const [refinePrompt, setRefinePrompt] = useState("");
 
   const files = result?.generated?.files || [];
   const activeFile = files[activeFileIndex];
 
-  const handleDownloadAll = () => {
-    files.forEach((file) => {
-      setTimeout(() => {
+  const handleDownloadAll = async () => {
+    try {
+      const zip = new JSZip();
+      files.forEach((file) => {
+        zip.file(file.filename, file.content);
+      });
+      const blob = await zip.generateAsync({ type: "blob" });
+      downloadFile(blob, "ui-code-export.zip", "application/zip");
+    } catch (err) {
+      console.error("Failed to generate zip", err);
+      // Fallback
+      files.forEach((file) => {
         downloadFile(file.content, file.filename, "text/plain");
-      }, files.indexOf(file) * 100);
-    });
+      });
+    }
+  };
+
+  const handleRefine = () => {
+    if (refinePrompt.trim() && onRefine) {
+      onRefine(refinePrompt.trim());
+      setRefinePrompt("");
+    }
   };
 
   const tabs = [
@@ -734,6 +752,121 @@ export default function CodePreviewPanel({ isOpen, onClose, result, isLoading, e
                 Add elements to your canvas, then click{" "}
                 <strong style={{ color: "#818cf8" }}>Generate Code</strong> to convert your design into React components.
               </p>
+            </div>
+          </div>
+        )}
+        {/* Refinement Panel at the bottom */}
+        {!isLoading && !error && result && (
+          <div
+            style={{
+              padding: "16px 24px",
+              borderTop: "1px solid rgba(255,255,255,0.07)",
+              background: "rgba(15, 23, 42, 0.4)",
+              backdropFilter: "blur(12px)",
+              display: "flex",
+              flexDirection: "column",
+              gap: "10px",
+              flexShrink: 0,
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: "11px", fontWeight: "700", color: "#818cf8", textTransform: "uppercase", letterSpacing: "0.05em" }}>
+                Refine with AI Instruction
+              </span>
+              <button
+                type="button"
+                onClick={onRegenerate}
+                title="Rerun the entire code generation from the current canvas elements"
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "#94a3b8",
+                  fontSize: "11px",
+                  fontWeight: "600",
+                  cursor: "pointer",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "4px",
+                  transition: "color 0.2s ease",
+                }}
+                onMouseEnter={(e) => e.currentTarget.style.color = "#818cf8"}
+                onMouseLeave={(e) => e.currentTarget.style.color = "#94a3b8"}
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+                </svg>
+                Regenerate Code
+              </button>
+            </div>
+            
+            <div style={{ display: "flex", gap: "8px" }}>
+              <input
+                type="text"
+                placeholder="e.g., Make the layout mobile responsive, use dark mode, change primary color..."
+                value={refinePrompt}
+                onChange={(e) => setRefinePrompt(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter" && refinePrompt.trim()) {
+                    handleRefine();
+                  }
+                }}
+                style={{
+                  flex: 1,
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid rgba(255,255,255,0.12)",
+                  borderRadius: "10px",
+                  padding: "10px 14px",
+                  fontSize: "13px",
+                  color: "#f8fafc",
+                  outline: "none",
+                  transition: "all 0.2s ease",
+                }}
+                onFocus={(e) => {
+                  e.currentTarget.style.borderColor = "#6366f1";
+                  e.currentTarget.style.boxShadow = "0 0 0 2px rgba(99,102,241,0.2)";
+                }}
+                onBlur={(e) => {
+                  e.currentTarget.style.borderColor = "rgba(255,255,255,0.12)";
+                  e.currentTarget.style.boxShadow = "none";
+                }}
+              />
+              <button
+                type="button"
+                onClick={handleRefine}
+                disabled={!refinePrompt.trim()}
+                style={{
+                  background: refinePrompt.trim()
+                    ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
+                    : "rgba(255,255,255,0.04)",
+                  border: `1px solid ${refinePrompt.trim() ? "rgba(99,102,241,0.4)" : "rgba(255,255,255,0.08)"}`,
+                  borderRadius: "10px",
+                  color: refinePrompt.trim() ? "#ffffff" : "#475569",
+                  padding: "0 18px",
+                  fontSize: "12px",
+                  fontWeight: "700",
+                  cursor: refinePrompt.trim() ? "pointer" : "not-allowed",
+                  transition: "all 0.2s ease",
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                }}
+                onMouseEnter={(e) => {
+                  if (refinePrompt.trim()) {
+                    e.currentTarget.style.transform = "translateY(-1px)";
+                    e.currentTarget.style.boxShadow = "0 4px 12px rgba(99,102,241,0.3)";
+                  }
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = "";
+                  e.currentTarget.style.boxShadow = "";
+                }}
+              >
+                Refine
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <line x1="22" y1="2" x2="11" y2="13" />
+                  <polygon points="22 2 15 22 11 13 2 9 22 2" />
+                </svg>
+              </button>
             </div>
           </div>
         )}

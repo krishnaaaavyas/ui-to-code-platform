@@ -145,10 +145,12 @@ Without the key, the pipeline runs in **fallback mode** — it still infers the 
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/api/ai/generate` | Full pipeline: canvas → AST → normalize → code |
+| `POST` | `/api/ai/generate` / `/api/ai/generate-code` | Full pipeline: canvas → AST → normalize → code |
 | `POST` | `/api/ai/schema` | Light mode: canvas → AST + tokens only (no LLM) |
+| `POST` | `/api/ai/normalize-ui-schema` | Normalization: converts raw schema + tokens to enriched semantic AST |
+| `POST` | `/api/ai/refine-code` | Code Refinement: updates existing files using LLM based on user prompt |
 
-Both endpoints accept:
+Both code generation and schema endpoints accept:
 ```json
 {
   "elements": [...],
@@ -160,15 +162,26 @@ Or, if working from a saved document:
 { "documentId": "uuid-of-your-document" }
 ```
 
+The refinement endpoint `/api/ai/refine-code` accepts:
+```json
+{
+  "normalizedSchema": {...},
+  "files": [{ "filename": "App.jsx", "language": "jsx", "content": "..." }],
+  "instruction": "Convert the layout to a dark theme and make it responsive",
+  "stack": "react-tailwind"
+}
+```
+
 ### Frontend Usage
 
 1. Draw your UI on the canvas (shapes, text, images).
 2. Click the **✦ Generate Code** button in the top-right corner of the canvas.
 3. A slide-over drawer opens showing the generated React components with:
-   - **Generated Code** tab: Syntax-highlighted files with copy buttons and file-level navigation.
+   - **Generated Code** tab: Syntax-highlighted files with copy/download buttons and file-level navigation.
    - **UI Schema** tab: The intermediate semantic AST for inspection/debugging.
    - **Design Tokens** tab: Color swatches and typography scale extracted from the canvas.
-4. Download individual files or all files directly from the drawer.
+4. **Iterative Refinement**: Enter refinement prompts (e.g. "make it responsive", "add header drop shadow") in the bottom **Refine with AI Instruction** box and click **Refine** to iteratively improve the codebase.
+5. **Download Export**: Click **Download** to bundle all code files together into a single downloadable **ZIP archive** (`ui-code-export.zip`) containing the full component list.
 
 ### Semantic Classifications
 
@@ -185,4 +198,13 @@ The heuristic AST builder classifies elements as:
 | `image` | Konva Image node |
 | `icon` | Pen path / line drawing |
 | `container` | Any other rect with children |
+
+---
+
+## Continuous Integration & CI/CD 🚀
+
+The project is integrated with a GitHub Actions workflow defined in `.github/workflows/ci.yml`. On every push or pull request to the `main` or `master` branches, the runner:
+1. Installs Node.js packages for both frontend client and backend server.
+2. Checks for linter compliance (`eslint`).
+3. Runs automated builds and tests (`vite build` and server tests) to ensure production stability.
 

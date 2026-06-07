@@ -13,6 +13,7 @@
     "@codesandbox/sandpack-react": "^2.20.0",
     "@monaco-editor/react": "^4.7.0",
     "axios": "^1.16.1",
+    "jszip": "^3.10.1",
     "konva": "^10.3.0",
     "lucide-react": "^1.16.0",
     "react": "^19.2.6",

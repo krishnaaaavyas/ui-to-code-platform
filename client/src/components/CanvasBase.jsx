@@ -4,7 +4,7 @@ import SideMenu from "./SideMenu";
 import CodePreviewPanel from "./CodePreviewPanel";
 import { useStore } from "../store/useStore";
 import { updateDocument } from "../api/documents";
-import { generateCodeFromCanvas } from "../api/ai";
+import { generateCodeFromCanvas, refineGeneratedCode } from "../api/ai";
 import { refreshSession } from "../api/auth";
 import { io } from "socket.io-client";
 
@@ -154,6 +154,38 @@ function CanvasBase() {
       setCodeGenLoading(false);
     }
   }, [elements, boardWidth, boardHeight, boardColor]);
+
+  const handleRefineCode = useCallback(async (instruction) => {
+    if (!codeGenResult || !codeGenResult.pipeline?.normalizedSchema) {
+      setCodeGenError("No active UI schema to refine. Generate code first.");
+      return;
+    }
+    setCodeGenError(null);
+    setCodeGenResult(null); // Clear previous files to show transition/loading
+    setCodeGenLoading(true);
+    try {
+      const payload = {
+        normalizedSchema: codeGenResult.pipeline.normalizedSchema,
+        files: codeGenResult.generated?.files || [],
+        instruction,
+        stack: "react-tailwind",
+      };
+      const response = await refineGeneratedCode(payload);
+      if (response.success && response.generated) {
+        // Keep the same pipeline tokens/schema but update the generated code
+        setCodeGenResult((prev) => ({
+          ...prev,
+          generated: response.generated,
+        }));
+      } else {
+        throw new Error("Invalid response received from code refinement.");
+      }
+    } catch (err) {
+      setCodeGenError(err.message || "Code refinement failed. Please try again.");
+    } finally {
+      setCodeGenLoading(false);
+    }
+  }, [codeGenResult]);
 
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
@@ -1146,6 +1178,8 @@ function CanvasBase() {
           result={codeGenResult}
           isLoading={codeGenLoading}
           error={codeGenError}
+          onRefine={handleRefineCode}
+          onRegenerate={handleGenerateCode}
         />
 
         <div ref={boardRef} className="canvas-base__board">
