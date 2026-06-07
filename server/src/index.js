@@ -1,7 +1,7 @@
+require("dotenv").config();
 const http = require("http");
 const app = require("./app");
 const { initSocket } = require("./realtime/socket");
-require("dotenv").config();
 
 const port = process.env.PORT || 4000;
 

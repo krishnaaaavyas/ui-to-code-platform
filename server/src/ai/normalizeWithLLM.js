@@ -7,67 +7,67 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // ─── UINode Schema (Zod) ────────────────────────────────────────────────────
 // Recursive schema for a semantic UI node tree returned by LLM normalization.
 const UIStylesSchema = z.object({
-  backgroundColor: z.string().optional(),
-  color: z.string().optional(),
-  borderColor: z.string().optional(),
-  borderRadius: z.string().optional(),
-  fontSize: z.string().optional(),
-  fontWeight: z.string().optional(),
-  padding: z.string().optional(),
-  gap: z.string().optional(),
-  width: z.string().optional(),
-  height: z.string().optional(),
+  backgroundColor: z.string().nullable(),
+  color: z.string().nullable(),
+  borderColor: z.string().nullable(),
+  borderRadius: z.string().nullable(),
+  fontSize: z.string().nullable(),
+  fontWeight: z.string().nullable(),
+  padding: z.string().nullable(),
+  gap: z.string().nullable(),
+  width: z.string().nullable(),
+  height: z.string().nullable(),
 });
 
 // Zod does not natively support recursive schemas elegantly; we define depth-2 manually
 const UINodeLeafSchema = z.object({
   id: z.string(),
   kind: z.enum(["container", "card", "button", "input", "text", "image", "icon", "navbar", "hero", "footer", "sidebar", "unknown"]),
-  name: z.string().optional(),
-  text: z.string().optional(),
-  url: z.string().optional(),
-  placeholder: z.string().optional(),
+  name: z.string().nullable(),
+  text: z.string().nullable(),
+  url: z.string().nullable(),
+  placeholder: z.string().nullable(),
   x: z.number(),
   y: z.number(),
   width: z.number(),
   height: z.number(),
-  styles: UIStylesSchema.optional(),
+  styles: UIStylesSchema.nullable(),
   children: z.array(z.object({
     id: z.string(),
     kind: z.enum(["container", "card", "button", "input", "text", "image", "icon", "navbar", "hero", "footer", "sidebar", "unknown"]),
-    name: z.string().optional(),
-    text: z.string().optional(),
-    url: z.string().optional(),
-    placeholder: z.string().optional(),
+    name: z.string().nullable(),
+    text: z.string().nullable(),
+    url: z.string().nullable(),
+    placeholder: z.string().nullable(),
     x: z.number(),
     y: z.number(),
     width: z.number(),
     height: z.number(),
-    styles: UIStylesSchema.optional(),
-    children: z.array(z.any()).optional(),
-  })).optional(),
+    styles: UIStylesSchema.nullable(),
+    children: z.array(z.any()).nullable(),
+  })).nullable(),
 });
 
 const NormalizedUISchemaSchema = z.object({
   page: z.object({
     width: z.number(),
     height: z.number(),
-    backgroundColor: z.string().optional(),
-    title: z.string().optional(),
-    description: z.string().optional(),
+    backgroundColor: z.string().nullable(),
+    title: z.string().nullable(),
+    description: z.string().nullable(),
   }),
   designTokens: z.object({
-    colors: z.record(z.string()).optional(),
+    colors: z.record(z.string()).nullable(),
     fonts: z.object({
-      families: z.array(z.string()).optional(),
-      sizes: z.record(z.string()).optional(),
-      weights: z.array(z.union([z.string(), z.number()])).optional(),
-    }).optional(),
-    radii: z.array(z.string()).optional(),
-  }).optional(),
+      families: z.array(z.string()).nullable(),
+      sizes: z.record(z.string()).nullable(),
+      weights: z.array(z.union([z.string(), z.number()])).nullable(),
+    }).nullable(),
+    radii: z.array(z.string()).nullable(),
+  }).nullable(),
   nodes: z.array(UINodeLeafSchema),
-  layout: z.enum(["single-column", "two-column", "grid", "sidebar-layout", "free-form"]).optional(),
-  componentType: z.enum(["landing-page", "dashboard", "form", "card-list", "modal", "nav", "mixed"]).optional(),
+  layout: z.enum(["single-column", "two-column", "grid", "sidebar-layout", "free-form"]).nullable(),
+  componentType: z.enum(["landing-page", "dashboard", "form", "card-list", "modal", "nav", "mixed"]).nullable(),
 });
 
 /**
@@ -121,29 +121,41 @@ ${JSON.stringify(tokens, null, 2)}
 
 Please normalize, enrich, and return the corrected UI schema.`;
 
-  try {
-    const completion = await client.beta.chat.completions.parse({
-      model: "gpt-4o-mini",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: zodResponseFormat(NormalizedUISchemaSchema, "ui_schema"),
-      temperature: 0.2,
-      max_tokens: 4096,
-    });
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[normalizeWithLLM] Calling OpenAI API (attempt ${attempt}/${maxAttempts})...`);
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        response_format: zodResponseFormat(NormalizedUISchemaSchema, "ui_schema"),
+        temperature: attempt === 1 ? 0.2 : 0.4,
+        max_tokens: 4096,
+      });
 
-    const result = completion.choices[0].message.parsed;
-    return result;
-  } catch (err) {
-    console.error("[normalizeWithLLM] LLM call failed:", err.message);
-    // Fallback: return raw schema + tokens
-    return {
-      ...rawSchema,
-      designTokens: tokens,
-      layout: "free-form",
-      componentType: "mixed",
-    };
+      const content = completion.choices[0].message.content;
+      if (!content) {
+        throw new Error("Empty content received from OpenAI.");
+      }
+      const result = JSON.parse(content);
+      return result;
+    } catch (err) {
+      console.warn(`[normalizeWithLLM] Attempt ${attempt} failed: ${err.message}`);
+      if (attempt === maxAttempts) {
+        console.error("[normalizeWithLLM] All attempts failed. Utilizing fallback raw schema.");
+        return {
+          ...rawSchema,
+          designTokens: tokens,
+          layout: "free-form",
+          componentType: "mixed",
+        };
+      }
+      // Delay before retrying
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 }
 

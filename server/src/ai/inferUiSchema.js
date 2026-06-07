@@ -8,7 +8,7 @@ function getBounds(el) {
       height: r * 2,
     };
   }
-  if (el.type === "path") {
+  if (el.type === "path" || el.type === "pen" || el.type === "line") {
     if (!el.points || el.points.length === 0) {
       return { x: el.x || 0, y: el.y || 0, width: 0, height: 0 };
     }
@@ -51,7 +51,7 @@ function isContained(c, p) {
  * @returns {Object} Structured UI Schema
  */
 function inferUiSchema(elements, boardConfig = {}) {
-  const visibleElements = elements.filter((el) => el.visible !== false);
+  const visibleElements = elements.filter((el) => el.hidden !== true && el.visible !== false);
   
   // Calculate bounding boxes for all elements
   const boundsMap = new Map();
@@ -103,7 +103,7 @@ function inferUiSchema(elements, boardConfig = {}) {
       kind = "text";
     } else if (el.type === "image") {
       kind = "image";
-    } else if (el.type === "line" || el.type === "path") {
+    } else if (el.type === "line" || el.type === "path" || el.type === "pen") {
       kind = "icon"; // path drawings are usually icons/decorations
     }
 
@@ -150,7 +150,7 @@ function inferUiSchema(elements, boardConfig = {}) {
     }
 
     if (el.type === "image") {
-      node.url = el.url;
+      node.url = el.src || el.url;
     }
 
     // If it's a button, compress text as node property instead of child
@@ -170,11 +170,11 @@ function inferUiSchema(elements, boardConfig = {}) {
       node.children = sortedChildren.map(buildNode);
       
       // If it contains kids, mark container as a card/section semantically
-      if (kind === "container") {
+      if (node.kind === "container") {
         const hasImage = sortedChildren.some((c) => c.type === "image");
         const hasText = sortedChildren.some((c) => c.type === "text");
         if (hasImage && hasText && bounds.width < 500) {
-          kind = "card";
+          node.kind = "card";
         }
       }
     }

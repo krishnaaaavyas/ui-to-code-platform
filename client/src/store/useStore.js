@@ -158,28 +158,31 @@ export const useStore = create((set, get) => ({
   serializeDocument: () => {
     const state = get();
     return {
-      boardSettings: {
-        boardWidth: state.boardWidth,
-        boardHeight: state.boardHeight,
-        backgroundColor: state.backgroundColor,
+      board: {
+        width: state.boardWidth,
+        height: state.boardHeight,
+        background: state.backgroundColor,
       },
-      elements: state.elements.map((el) => ({
+      elements: state.elements.map((el, index) => ({
         id: el.id,
-        type: el.type,
+        type: el.type === "rectangle" ? "rect" : el.type === "path" ? "pen" : el.type,
         x: el.x,
         y: el.y,
         width: el.width,
         height: el.height,
         radius: el.radius,
-        text: el.text,
-        fontSize: el.fontSize,
+        rotation: el.rotation,
         fill: el.fill,
         stroke: el.stroke,
         strokeWidth: el.strokeWidth,
+        text: el.text,
+        fontSize: el.fontSize,
+        fontFamily: el.fontFamily,
         points: el.points ? [...el.points] : undefined,
-        rotation: el.rotation,
-        visible: el.visible !== false,
+        src: el.url || el.src,
         locked: !!el.locked,
+        hidden: el.visible === false,
+        zIndex: index,
         name: el.name || el.type,
       })),
     };
@@ -187,29 +190,38 @@ export const useStore = create((set, get) => ({
 
   loadDocument: (doc) => {
     const data = doc.data || {};
-    const settings = data.boardSettings || {
-      boardWidth: data.boardWidth ?? 2200,
-      boardHeight: data.boardHeight ?? 1400,
-      backgroundColor: data.backgroundColor ?? "#ffffff",
-    };
+    const board = data.board || data.boardSettings || {};
+    const boardWidth = board.width ?? board.boardWidth ?? data.boardWidth ?? 2200;
+    const boardHeight = board.height ?? board.boardHeight ?? data.boardHeight ?? 1400;
+    const backgroundColor = board.background ?? board.backgroundColor ?? data.backgroundColor ?? "#ffffff";
+
     const loadedSnapshot = {
-      boardWidth: settings.boardWidth,
-      boardHeight: settings.boardHeight,
-      backgroundColor: settings.backgroundColor,
+      boardWidth,
+      boardHeight,
+      backgroundColor,
       selectedElementId: null,
-      elements: (data.elements || []).map((el) => ({
-        ...el,
-        points: el.points ? [...el.points] : undefined,
-      })),
+      elements: (data.elements || []).map((el) => {
+        let type = el.type;
+        if (type === "rect") type = "rectangle";
+        if (type === "pen") type = "path";
+
+        return {
+          ...el,
+          type,
+          visible: el.hidden !== true && el.visible !== false,
+          url: el.src || el.url,
+          points: el.points ? [...el.points] : undefined,
+        };
+      }),
     };
     set({
       documentId: doc.id,
       documentName: doc.name,
       documentVersion: doc.version || 1,
       userRole: doc.user_role || "owner",
-      boardWidth: settings.boardWidth,
-      boardHeight: settings.boardHeight,
-      backgroundColor: settings.backgroundColor,
+      boardWidth,
+      boardHeight,
+      backgroundColor,
       selectedElementId: null,
       elements: loadedSnapshot.elements,
       history: [loadedSnapshot],

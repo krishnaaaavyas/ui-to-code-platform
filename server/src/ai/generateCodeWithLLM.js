@@ -65,23 +65,36 @@ ${JSON.stringify(normalizedSchema, null, 2)}
 Create a complete, self-contained React application that visually matches this design.
 The output must include App.jsx and all sub-component files needed to render the full design.`;
 
-  try {
-    const completion = await client.beta.chat.completions.parse({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: zodResponseFormat(GeneratedCodeSchema, "generated_code"),
-      temperature: 0.2,
-      max_tokens: 8192,
-    });
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[generateCodeWithLLM] Calling OpenAI API (attempt ${attempt}/${maxAttempts})...`);
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        response_format: zodResponseFormat(GeneratedCodeSchema, "generated_code"),
+        temperature: attempt === 1 ? 0.2 : 0.4,
+        max_tokens: 8192,
+      });
 
-    const result = completion.choices[0].message.parsed;
-    return result;
-  } catch (err) {
-    console.error("[generateCodeWithLLM] LLM call failed:", err.message);
-    return buildFallbackCode(normalizedSchema);
+      const content = completion.choices[0].message.content;
+      if (!content) {
+        throw new Error("Empty content received from OpenAI.");
+      }
+      const result = JSON.parse(content);
+      return result;
+    } catch (err) {
+      console.warn(`[generateCodeWithLLM] Attempt ${attempt} failed: ${err.message}`);
+      if (attempt === maxAttempts) {
+        console.error("[generateCodeWithLLM] All attempts failed. Reverting to fallback builder.");
+        return buildFallbackCode(normalizedSchema);
+      }
+      // Delay before retrying
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 }
 

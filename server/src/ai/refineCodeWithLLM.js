@@ -67,23 +67,36 @@ ${instruction}
 
 Please return the updated complete list of files conforming to the schema.`;
 
-  try {
-    const completion = await client.beta.chat.completions.parse({
-      model: "gpt-4o",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userMessage },
-      ],
-      response_format: zodResponseFormat(GeneratedCodeSchema, "generated_code"),
-      temperature: 0.2,
-      max_tokens: 8192,
-    });
+  const maxAttempts = 2;
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    try {
+      console.log(`[refineCodeWithLLM] Calling OpenAI API (attempt ${attempt}/${maxAttempts})...`);
+      const completion = await client.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userMessage },
+        ],
+        response_format: zodResponseFormat(GeneratedCodeSchema, "generated_code"),
+        temperature: attempt === 1 ? 0.2 : 0.4,
+        max_tokens: 8192,
+      });
 
-    const result = completion.choices[0].message.parsed;
-    return result;
-  } catch (err) {
-    console.error("[refineCodeWithLLM] LLM call failed:", err.message);
-    return buildFallbackRefinedCode(normalizedSchema, existingFiles, instruction);
+      const content = completion.choices[0].message.content;
+      if (!content) {
+        throw new Error("Empty content received from OpenAI.");
+      }
+      const result = JSON.parse(content);
+      return result;
+    } catch (err) {
+      console.warn(`[refineCodeWithLLM] Attempt ${attempt} failed: ${err.message}`);
+      if (attempt === maxAttempts) {
+        console.error("[refineCodeWithLLM] All attempts failed. Reverting to fallback builder.");
+        return buildFallbackRefinedCode(normalizedSchema, existingFiles, instruction);
+      }
+      // Delay before retrying
+      await new Promise((r) => setTimeout(r, 1000));
+    }
   }
 }
 

@@ -1,33 +1,40 @@
 /**
- * @typedef {Object} BoardSettings
- * @property {number} boardWidth - Width of the whiteboard canvas
- * @property {number} boardHeight - Height of the whiteboard canvas
- * @property {string} backgroundColor - Background hex color of the canvas
+ * @typedef {'rect' | 'circle' | 'text' | 'pen' | 'image'} ElementType
  */
 
 /**
  * @typedef {Object} CanvasElement
- * @property {string} id - Unique identifier for the canvas element
- * @property {'rect' | 'circle' | 'triangle' | 'diamond' | 'line' | 'text' | 'path' | 'image'} type - Shape/element drawing type
- * @property {number} x - Left coordinate relative to stage origin
- * @property {number} y - Top coordinate relative to stage origin
- * @property {number} [width] - Width dimension for rectangular nodes
- * @property {number} [height] - Height dimension for rectangular nodes
- * @property {number} [radius] - Radius for circular shapes
- * @property {string} [text] - Text content for label nodes
- * @property {number} [fontSize] - Font size in pixels for text elements
- * @property {string} [fill] - Hex color value for shape backgrounds
- * @property {string} [stroke] - Hex color value for borders or line strokes
- * @property {number} [strokeWidth] - Width of drawing strokes
- * @property {number[]} [points] - Coordinate pairs for custom paths/drawings
- * @property {number} [rotation] - Rotation angle in degrees
- * @property {boolean} visible - Controls rendering of the layer
- * @property {boolean} locked - Prevents editing interactions when active
- * @property {string} name - User-friendly label for hierarchy display
+ * @property {string} id - Unique design element id
+ * @property {ElementType} type - Visual drawing primitive category
+ * @property {number} x - Left origin coordinate offset
+ * @property {number} y - Top origin coordinate offset
+ * @property {number} [width] - Width bound for rectangular zones
+ * @property {number} [height] - Height bound for rectangular zones
+ * @property {number} [radius] - Circular radius
+ * @property {number} [rotation] - Angle offset parameter
+ * @property {string} [fill] - Inner background hex color
+ * @property {string} [stroke] - Border border hex color
+ * @property {number} [strokeWidth] - Width sizing for lines/pen strokes
+ * @property {string} [text] - Text content for labels
+ * @property {number} [fontSize] - Typography pixel scale
+ * @property {string} [fontFamily] - Font family selection
+ * @property {number[]} [points] - Coordinates mapping for freehand drawings
+ * @property {string} [src] - Image source url reference
+ * @property {boolean} [locked] - Interaction lock flag
+ * @property {boolean} [hidden] - Render toggle parameter
+ * @property {number} zIndex - Sorting index layer parameter
  */
 
 /**
  * @typedef {Object} CanvasDocument
- * @property {BoardSettings} boardSettings - Persistent global canvas parameters
- * @property {CanvasElement[]} elements - Array of active canvas drawings, excluding transient selections or active tool tools
+ * @property {string} [id] - Document UUID
+ * @property {string} name - Document name
+ * @property {number} version - Database concurrency tracker index
+ * @property {Object} board - Master canvas layout parameter constraints
+ * @property {number} board.width - Full canvas pixel width
+ * @property {number} board.height - Full canvas pixel height
+ * @property {string} board.background - Background hex fill code
+ * @property {CanvasElement[]} elements - Vector element stack
+ * @property {string} [createdAt] - Creation timestamp
+ * @property {string} [updatedAt] - Modification timestamp
  */

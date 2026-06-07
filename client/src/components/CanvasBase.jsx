@@ -1202,6 +1202,12 @@ function CanvasBase() {
               display: "flex",
               alignItems: "center",
               gap: "8px",
+              padding: "6px 12px",
+              borderRadius: "14px",
+              background: "rgba(15, 23, 42, 0.45)",
+              backdropFilter: "blur(12px)",
+              border: "1px solid rgba(255, 255, 255, 0.08)",
+              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
               zIndex: 100,
             }}
           >

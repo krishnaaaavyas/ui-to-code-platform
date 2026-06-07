@@ -11,7 +11,7 @@ export function extractBounds(el) {
       height: r * 2,
     };
   }
-  if (el.type === "path") {
+  if (el.type === "path" || el.type === "pen" || el.type === "line") {
     if (!el.points || el.points.length === 0) {
       return { x: el.x || 0, y: el.y || 0, width: 0, height: 0 };
     }
@@ -121,8 +121,13 @@ export function groupRepeatedPatterns(nodes) {
  * Constructs the recursive tree layout representation
  */
 export function buildNodeTree(document) {
-  const elements = (document.elements || []).filter((el) => el.visible !== false);
-  const boardSettings = document.boardSettings || { boardWidth: 2200, boardHeight: 1400, backgroundColor: "#ffffff" };
+  const elements = (document.elements || []).filter((el) => el.hidden !== true && el.visible !== false);
+  const board = document.board || document.boardSettings || { width: 2200, height: 1400, background: "#ffffff" };
+  const boardSettings = {
+    boardWidth: board.width ?? board.boardWidth ?? 2200,
+    boardHeight: board.height ?? board.boardHeight ?? 1400,
+    backgroundColor: board.background ?? board.backgroundColor ?? "#ffffff"
+  };
 
   const boundsMap = new Map();
   elements.forEach((el) => {
@@ -166,7 +171,7 @@ export function buildNodeTree(document) {
       kind = "text";
     } else if (el.type === "image") {
       kind = "image";
-    } else if (el.type === "line" || el.type === "path") {
+    } else if (el.type === "line" || el.type === "path" || el.type === "pen") {
       kind = "icon";
     }
 
@@ -218,7 +223,7 @@ export function buildNodeTree(document) {
     }
 
     if (el.type === "image") {
-      node.url = el.url;
+      node.url = el.src || el.url;
     }
 
     if (kind === "button" && childrenElements.length === 1) {
