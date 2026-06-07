@@ -4,38 +4,24 @@ import JSZip from "jszip";
 // ─── Simple lightweight syntax highlighter (no external dep) ────────────────
 function highlight(code, lang) {
   if (!code) return "";
-  // Basic JSX/JS highlighting using regex + span injection
+
   let escaped = code
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
 
   if (lang === "jsx" || lang === "tsx" || lang === "js") {
-    // Keywords
-    escaped = escaped.replace(
-      /\b(import|export|default|from|const|let|var|function|return|if|else|for|while|class|extends|new|this|typeof|null|undefined|true|false|async|await|try|catch|throw)\b/g,
-      '<span style="color:#c792ea">$1</span>'
-    );
-    // Strings
-    escaped = escaped.replace(
-      /(`[^`]*`|"[^"]*"|'[^']*')/g,
-      '<span style="color:#c3e88d">$1</span>'
-    );
-    // JSX tags
-    escaped = escaped.replace(
-      /(&lt;\/?[A-Za-z][A-Za-z0-9]*)/g,
-      '<span style="color:#89ddff">$1</span>'
-    );
-    // Comments
-    escaped = escaped.replace(
-      /(\/\/[^\n]*)/g,
-      '<span style="color:#546e7a;font-style:italic">$1</span>'
-    );
-    // Numbers
-    escaped = escaped.replace(
-      /\b(\d+)\b/g,
-      '<span style="color:#f78c6c">$1</span>'
-    );
+    // Single-pass regex matching comments, strings, JSX tag names, keywords, and numbers
+    const tokenRegex = /(\/\/[^\n]*|\/\*[\s\S]*?\*\/)|(`[^`]*`|"[^"]*"|'[^']*')|(&lt;\/?[A-Za-z][A-Za-z0-9]*)|(\b(?:import|export|default|from|const|let|var|function|return|if|else|for|while|class|extends|new|this|typeof|null|undefined|true|false|async|await|try|catch|throw)\b)|(\b\d+\b)/g;
+
+    return escaped.replace(tokenRegex, (match, comment, string, tag, keyword, number) => {
+      if (comment) return `<span style="color:#546e7a;font-style:italic">${comment}</span>`;
+      if (string) return `<span style="color:#c3e88d">${string}</span>`;
+      if (tag) return `<span style="color:#89ddff">${tag}</span>`;
+      if (keyword) return `<span style="color:#c792ea">${keyword}</span>`;
+      if (number) return `<span style="color:#f78c6c">${number}</span>`;
+      return match;
+    });
   } else if (lang === "css") {
     escaped = escaped.replace(
       /([a-z-]+)(\s*:)/g,
@@ -45,6 +31,7 @@ function highlight(code, lang) {
       /(#[0-9a-fA-F]{3,8}|\d+px|\d+%|[a-z]+\(.*?\))/g,
       '<span style="color:#c3e88d">$1</span>'
     );
+    return escaped;
   }
 
   return escaped;
