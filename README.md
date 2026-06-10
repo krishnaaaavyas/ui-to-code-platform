@@ -4,6 +4,12 @@ A premium, interactive vector whiteboard and design editor platform built using 
 
 This platform allows users to draw, manipulate shapes, add text, manage layout layers, and persist drawings to their accounts with robust concurrency, version control, and autosave functionality.
 
+### 🌟 Premium Dark Obsidian Theme & Architecture
+- **Curated HSL Palette**: Designed with an Obsidian-space dark base (`#030712`), dark workspace grid backdrop (`#0b0e17`), and Indigo (`#6366f1` / `#3b82f6`) accents.
+- **Glassmorphism UI**: High-end translucent panels (`rgba(17, 24, 39, 0.7)`) with advanced blur filters (`backdrop-filter: blur(24px)`) and fine borders (`rgba(255, 255, 255, 0.06)`) for a premium look.
+- **Responsive Animations**: Subtle hover scaling and active status transitions on canvas elements, toolbar items, and buttons.
+- **Simplified Style Infrastructure**: Consolidated custom styles and helper classes in `App.css` and `index.css`, completely eliminating hardcoded light-theme styles, duplicate CSS variables, and cluttered inline React styling properties.
+
 ---
 
 ## Technical Architecture

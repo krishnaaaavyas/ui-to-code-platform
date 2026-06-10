@@ -114,8 +114,8 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
         ))}
       </div>
 
-      <div className="image-upload-field" style={{ marginTop: "16px", padding: "12px", border: "1px dashed rgba(255,255,255,0.15)", borderRadius: "8px", background: "rgba(15,23,42,0.1)" }}>
-        <label style={{ display: "block", fontSize: "11px", fontWeight: "700", color: "#94a3b8", marginBottom: "6px", textTransform: "uppercase" }}>
+      <div className="image-upload-field side-menu__section-dashed">
+        <label className="side-menu__panel-title" style={{ margin: 0 }}>
           Upload Image
         </label>
         <input
@@ -128,20 +128,11 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
         />
         <label
           htmlFor="image-file-input"
+          className="side-menu__btn-primary"
           style={{
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            padding: "8px 12px",
-            borderRadius: "6px",
-            background: userRole === "viewer" ? "rgba(255,255,255,0.03)" : "#3b82f6",
-            color: userRole === "viewer" ? "#94a3b8" : "#fff",
-            fontWeight: "600",
-            fontSize: "12px",
             cursor: userRole === "viewer" || uploadingImage ? "not-allowed" : "pointer",
-            textAlign: "center",
-            border: "none",
-            transition: "background 0.2s"
+            background: userRole === "viewer" ? "rgba(255,255,255,0.03)" : undefined,
+            color: userRole === "viewer" ? "var(--muted)" : undefined
           }}
         >
           {uploadingImage ? "Uploading..." : "Choose Image"}
@@ -149,11 +140,11 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
       </div>
 
       {selectedItem && (
-        <div className="shape-settings" style={{ marginTop: "16px", padding: "12px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15,23,42,0.2)" }}>
-          <p style={{ margin: "0 0 8px 0", fontSize: "11px", fontWeight: "700", color: "#94a3b8", textTransform: "uppercase" }}>Selection Settings</p>
+        <div className="shape-settings side-menu__section-card">
+          <p className="side-menu__panel-title" style={{ margin: 0 }}>Selection Settings</p>
           
           {["rect", "rectangle", "circle", "triangle", "diamond", "line"].includes(selectedItem.type) && (
-            <div className="shape-settings__field" style={{ marginBottom: "10px" }}>
+            <div className="shape-settings__field">
               <label>Fill color</label>
               <input
                 type="color"
@@ -164,12 +155,13 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
             </div>
           )}
 
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px", marginBottom: "10px" }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
             <button
               type="button"
               disabled={userRole === "viewer"}
               onClick={() => useStore.getState().bringToFront(selectedItem.id)}
-              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+              className="side-menu__btn-secondary"
+              style={{ padding: "6px" }}
             >
               Bring Front
             </button>
@@ -177,7 +169,8 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
               type="button"
               disabled={userRole === "viewer"}
               onClick={() => useStore.getState().sendToBack(selectedItem.id)}
-              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+              className="side-menu__btn-secondary"
+              style={{ padding: "6px" }}
             >
               Send Back
             </button>
@@ -185,7 +178,8 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
               type="button"
               disabled={userRole === "viewer"}
               onClick={() => useStore.getState().centerElement(selectedItem.id, "horizontal")}
-              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+              className="side-menu__btn-secondary"
+              style={{ padding: "6px" }}
             >
               Center X
             </button>
@@ -193,27 +187,29 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
               type="button"
               disabled={userRole === "viewer"}
               onClick={() => useStore.getState().centerElement(selectedItem.id, "vertical")}
-              style={{ padding: "6px", fontSize: "11px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", cursor: "pointer" }}
+              className="side-menu__btn-secondary"
+              style={{ padding: "6px" }}
             >
               Center Y
             </button>
           </div>
 
-          <div style={{ display: "flex", gap: "8px" }}>
+          <div style={{ display: "flex", gap: "8px", marginTop: "8px" }}>
             <button
               type="button"
               disabled={userRole === "viewer"}
               onClick={() => useStore.getState().duplicateElement(selectedItem.id)}
-              style={{ flex: 1, padding: "6px 12px", fontSize: "11px", background: "#3b82f6", border: "none", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+              className="side-menu__btn-primary"
+              style={{ flex: 1, padding: "6px 12px" }}
             >
               Duplicate
             </button>
             <button
               type="button"
-              className="shape-settings__delete"
+              className="shape-settings__delete side-menu__btn-danger"
               disabled={userRole === "viewer"}
               onClick={onDeleteSelected}
-              style={{ flex: 1, padding: "6px 12px", fontSize: "11px", background: "#ef4444", border: "none", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+              style={{ padding: "6px 12px" }}
             >
               Delete
             </button>
@@ -871,23 +867,21 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
       )}
 
       {documentId && (
-        <div className="share-section" style={{ marginTop: "16px", padding: "12px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15,23,42,0.2)" }}>
-          <p className="side-menu__panel-title" style={{ marginTop: 0 }}>Share Design</p>
+        <div className="share-section side-menu__section-card">
+          <p className="side-menu__panel-title">Share Design</p>
           
           {userRole !== "viewer" && (
-            <form onSubmit={handleShare} className="share-form" style={{ display: "flex", gap: "8px", marginBottom: "12px" }}>
+            <form onSubmit={handleShare} className="share-form">
               <input
                 type="email"
                 placeholder="collaborator@example.com"
                 value={shareEmail}
                 onChange={(e) => setShareEmail(e.target.value)}
                 required
-                style={{ flex: 1, minWidth: 0, padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.4)", color: "#fff", fontSize: "12px" }}
               />
               <select
                 value={shareRole}
                 onChange={(e) => setShareRole(e.target.value)}
-                style={{ padding: "6px 10px", borderRadius: "6px", border: "1px solid rgba(255,255,255,0.12)", background: "rgba(15,23,42,0.4)", color: "#fff", fontSize: "12px" }}
               >
                 <option value="viewer">Viewer</option>
                 <option value="editor">Editor</option>
@@ -895,7 +889,7 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
               <button
                 type="submit"
                 disabled={sharing}
-                style={{ padding: "6px 12px", borderRadius: "6px", border: "none", background: "#3b82f6", color: "#fff", fontWeight: "600", cursor: "pointer", fontSize: "12px" }}
+                className="side-menu__btn-primary"
               >
                 {sharing ? "..." : "Share"}
               </button>
@@ -907,14 +901,14 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
           ) : permissions.length === 0 ? (
             <p className="side-menu__panel-hint">Not shared with anyone yet.</p>
           ) : (
-            <div className="shared-users-list" style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
+            <div className="shared-users-list side-menu__list-vertical">
               {permissions.map((p) => (
-                <div key={p.id} style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 8px", background: "rgba(255,255,255,0.03)", borderRadius: "6px", fontSize: "12px" }}>
-                  <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-                    <span style={{ color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={p.user_email}>
+                <div key={p.id} className="side-menu__shared-item">
+                  <div className="side-menu__shared-info">
+                    <span className="side-menu__shared-name" title={p.user_email}>
                       {p.user_email}
                     </span>
-                    <span style={{ color: "#94a3b8", fontSize: "10px", textTransform: "capitalize" }}>
+                    <span className="side-menu__shared-role">
                       {p.role}
                     </span>
                   </div>
@@ -922,7 +916,7 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
                     <button
                       type="button"
                       onClick={() => handleRevokePermission(p.id)}
-                      style={{ border: "none", background: "none", color: "#ef4444", fontSize: "12px", cursor: "pointer", padding: "4px" }}
+                      className="side-menu__btn-danger-text"
                       title="Revoke access"
                     >
                       ✕
@@ -968,39 +962,27 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
       )}
 
       {/* Export & Import Section */}
-      <div className="export-import-section" style={{ marginTop: "16px", padding: "12px", border: "1px solid rgba(255,255,255,0.08)", borderRadius: "8px", background: "rgba(15,23,42,0.2)" }}>
-        <p className="side-menu__panel-title" style={{ marginTop: 0 }}>Export & Import</p>
-        <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
+      <div className="export-import-section side-menu__section-card">
+        <p className="side-menu__panel-title">Export & Import</p>
+        <div className="side-menu__list-vertical">
+          <div className="side-menu__flex-row-center">
             <button
               type="button"
               onClick={onExportPNG}
-              style={{ flex: 1, padding: "8px 12px", fontSize: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+              className="side-menu__btn-secondary"
             >
               📷 Export PNG
             </button>
             <button
               type="button"
               onClick={onExportJSON}
-              style={{ flex: 1, padding: "8px 12px", fontSize: "12px", background: "rgba(255,255,255,0.05)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "6px", color: "#fff", fontWeight: "600", cursor: "pointer" }}
+              className="side-menu__btn-secondary"
             >
               📥 Export JSON
             </button>
           </div>
           
-          <label
-            style={{
-              display: "block",
-              padding: "8px 12px",
-              fontSize: "12px",
-              background: "#3b82f6",
-              borderRadius: "6px",
-              color: "#fff",
-              fontWeight: "600",
-              cursor: "pointer",
-              textAlign: "center"
-            }}
-          >
+          <label className="side-menu__btn-primary side-menu__btn-primary--block">
             📤 Import JSON File
             <input
               type="file"
