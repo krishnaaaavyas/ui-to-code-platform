@@ -21,7 +21,7 @@ services:
     container_name: whiteboard-server
     environment:
       PORT: 4000
-      JWT_SECRET: supersecrettokenkeyforjwtWHITEBOARDapp
+      JWT_ACCESS_SECRET: supersecrettokenkeyforjwtACCESSWHITEBOARDapp
       JWT_REFRESH_SECRET: supersecrettokenkeyforjwtREFRESHWHITEBOARDapp
       DATABASE_URL: postgres://postgres:password@postgres:5432/whiteboard
       CLIENT_ORIGIN: http://localhost
@@ -37,6 +37,9 @@ services:
   client:
     build:
       context: ./client
+      args:
+        - VITE_API_BASE_URL=/api
+        - VITE_SOCKET_URL=/
     container_name: whiteboard-client
     restart: unless-stopped
 

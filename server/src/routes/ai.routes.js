@@ -34,4 +34,13 @@ router.post("/normalize-ui-schema", controller.normalizeSchema);
  */
 router.post("/refine-code", controller.refineCode);
 
+/**
+ * GET /api/ai/status
+ * Check if AI features (OpenAI API key) are enabled on the backend
+ */
+router.get("/status", (req, res) => {
+  res.json({ enabled: !!process.env.OPENAI_API_KEY });
+});
+
 module.exports = router;
+

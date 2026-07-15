@@ -1,8 +1,6 @@
-const OpenAI = require("openai");
+const { getOpenAIClient } = require("./openai");
 const { zodResponseFormat } = require("openai/helpers/zod");
 const { z } = require("zod");
-
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ─── Generated Code Schema ──────────────────────────────────────────────────
 const GeneratedFileSchema = z.object({
@@ -23,13 +21,11 @@ const GeneratedCodeSchema = z.object({
 /**
  * Generates clean React + Tailwind CSS component code from a normalized UI schema.
  * Uses OpenAI structured outputs to guarantee valid JSON-wrapped code artifacts.
- *
- * @param {Object} normalizedSchema - Enriched UI schema from normalizeWithLLM
- * @returns {Object} Generated code files { framework, stylingLibrary, files, entryFile, description, componentTree }
  */
 async function generateCodeWithLLM(normalizedSchema) {
-  if (!process.env.OPENAI_API_KEY) {
-    // Graceful fallback: generate a basic scaffold
+  const client = getOpenAIClient();
+  if (!client) {
+    console.log("[generateCodeWithLLM] OpenAI API Key absent. Returning deterministic fallback.");
     return buildFallbackCode(normalizedSchema);
   }
 
@@ -41,29 +37,15 @@ Rules:
 - Use Tailwind CSS utility classes for ALL styling. No inline styles, no CSS modules.
 - Break the design into separate reusable components (e.g., Navbar, HeroSection, Card, Button, InputField).
 - The main App.jsx should import and assemble all sub-components.
-- Use semantic HTML elements: <nav>, <main>, <section>, <header>, <footer>, <article>, <aside>, etc.
-- For images, use <img> tags with descriptive alt text.
-- For buttons, include type="button" and hover/focus Tailwind states.
-- For inputs, include proper label, id, name, and placeholder attributes.
-- Include a basic tailwind.config.js if custom colors from design tokens are needed.
-- Do not add any business logic, routing, or state beyond what is visible in the design.
 - Use responsive breakpoints (sm:, md:, lg:) where appropriate.
-- Approximate layout using Tailwind flex/grid utilities based on node positions and sizes.
-- For text nodes, preserve the original text content.
-- Add Tailwind's "group", "hover:", and "transition" classes to interactive elements for polish.
-
-Output format:
-- Always include App.jsx as the entry file
-- Sub-components should be in separate files
-- Each file must have full valid content (no placeholders or "// TODO" comments)`;
+- Use responsive layouts flex/grid.
+- Output App.jsx as entry.`;
 
   const userMessage = `Generate React + Tailwind CSS code for the following UI schema:
 \`\`\`json
 ${JSON.stringify(normalizedSchema, null, 2)}
 \`\`\`
-
-Create a complete, self-contained React application that visually matches this design.
-The output must include App.jsx and all sub-component files needed to render the full design.`;
+Create a complete, self-contained React application.`;
 
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -77,31 +59,27 @@ The output must include App.jsx and all sub-component files needed to render the
         ],
         response_format: zodResponseFormat(GeneratedCodeSchema, "generated_code"),
         temperature: attempt === 1 ? 0.2 : 0.4,
-        max_tokens: 8192,
+        max_tokens: 8000,
+      }, {
+        timeout: 30000, // 30s timeout per call
       });
 
       const content = completion.choices[0].message.content;
       if (!content) {
         throw new Error("Empty content received from OpenAI.");
       }
-      const result = JSON.parse(content);
-      return result;
+      return JSON.parse(content);
     } catch (err) {
       console.warn(`[generateCodeWithLLM] Attempt ${attempt} failed: ${err.message}`);
       if (attempt === maxAttempts) {
         console.error("[generateCodeWithLLM] All attempts failed. Reverting to fallback builder.");
         return buildFallbackCode(normalizedSchema);
       }
-      // Delay before retrying
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
 }
 
-/**
- * Builds a basic scaffold without calling the LLM.
- * Used when OPENAI_API_KEY is not set or the LLM call fails.
- */
 function buildFallbackCode(schema) {
   const nodes = schema.nodes || [];
   const tokens = schema.designTokens || {};
@@ -128,36 +106,21 @@ function buildFallbackCode(schema) {
     if (node.kind === "image") {
       return `      <img src="${node.url || "https://placehold.co/400x300"}" alt="design image" className="rounded-lg object-cover" />`;
     }
-    if (node.kind === "card") {
-      return `      <div className="bg-white rounded-xl shadow-md p-6 flex flex-col gap-3">
-        ${(node.children || []).map((c) => `<p className="text-sm text-gray-600">${c.text || c.kind}</p>`).join("\n        ")}
-      </div>`;
-    }
-    if (node.kind === "navbar") {
-      return `      <nav className="w-full bg-white shadow-sm px-8 py-4 flex items-center justify-between">
-        <span className="text-xl font-bold text-blue-600">Brand</span>
-        <div className="flex gap-6 text-gray-600 text-sm font-medium">
-          <a href="#" className="hover:text-blue-600 transition-colors">Home</a>
-          <a href="#" className="hover:text-blue-600 transition-colors">About</a>
-          <a href="#" className="hover:text-blue-600 transition-colors">Contact</a>
-        </div>
-      </nav>`;
-    }
-    // Generic container
     return `      <div className="rounded-xl bg-white shadow p-4 flex flex-col gap-2">
-        ${(node.children || []).map((c) => `<span className="text-sm">${c.text || c.kind}</span>`).join("\n        ")}
+        <span className="text-sm">${node.text || node.kind}</span>
       </div>`;
   });
 
   const appJsx = `import React from 'react';
 
-// Auto-generated by UI-to-Code Pipeline
+// Fallback Scaffold (OpenAI Offline / Disabled)
 // Design tokens: primary=${primaryColor}, background=${bgColor}
 
 export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center">
       <main className="w-full max-w-5xl mx-auto py-12 px-4 flex flex-col gap-8">
+        <h1 className="text-xl font-bold text-gray-900 mb-4">Fallback Local Canvas Scaffold</h1>
 ${componentBlocks.join("\n\n")}
       </main>
     </div>
@@ -176,7 +139,7 @@ ${componentBlocks.join("\n\n")}
       },
     ],
     entryFile: "App.jsx",
-    description: `Auto-generated React + Tailwind scaffold from canvas design with ${nodes.length} elements.`,
+    description: `Deterministic React + Tailwind scaffold fallback.`,
     componentTree: ["App"],
   };
 }

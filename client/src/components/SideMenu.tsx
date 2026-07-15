@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { useStore } from "../store/useStore";
 import {
   createDocument,
@@ -38,22 +38,39 @@ const strokeOptions = [
   { name: "Line", symbol: "—" },
 ];
 
-function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedItem, onDeleteSelected, onChangeSelectedColor }) {
+interface ShapesPanelProps {
+  onAddShape: (name: string) => void;
+  activeShape: string | null;
+  onChangeActiveShape: (name: string | null) => void;
+  selectedItem: any;
+  onDeleteSelected: () => void;
+  onChangeSelectedColor: (color: string) => void;
+}
+
+function ShapesPanel({
+  onAddShape,
+  activeShape,
+  onChangeActiveShape,
+  selectedItem,
+  onDeleteSelected,
+  onChangeSelectedColor
+}: ShapesPanelProps) {
   const userRole = useStore((state) => state.userRole);
+  const showToast = useStore((state) => state.showToast);
   const [uploadingImage, setUploadingImage] = useState(false);
 
-  const handleImageUpload = async (e) => {
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const currentRole = useStore.getState().userRole;
     const documentId = useStore.getState().documentId;
     if (currentRole === "viewer") {
-      alert("Access denied: Viewers cannot upload images.");
+      showToast("Access denied: Viewers cannot upload images.", "error");
       return;
     }
     if (!documentId) {
-      alert("Please save your design first before uploading images.");
+      showToast("Please save your design first before uploading images.", "error");
       return;
     }
 
@@ -86,8 +103,9 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
         rotation: 0
       };
       useStore.getState().addElement(newImageElement);
-    } catch (err) {
-      alert("Failed to upload image: " + err.message);
+      showToast("Image uploaded successfully.", "success");
+    } catch (err: any) {
+      showToast("Failed to upload image: " + err.message, "error");
     } finally {
       setUploadingImage(false);
     }
@@ -221,7 +239,11 @@ function ShapesPanel({ onAddShape, activeShape, onChangeActiveShape, selectedIte
   );
 }
 
-function TextPanel({ onAddText }) {
+interface TextPanelProps {
+  onAddText: (text: string) => void;
+}
+
+function TextPanel({ onAddText }: TextPanelProps) {
   const userRole = useStore((state) => state.userRole);
   const [textInput, setTextInput] = useState("");
 
@@ -243,7 +265,7 @@ function TextPanel({ onAddText }) {
           value={textInput}
           disabled={userRole === "viewer"}
           onChange={(e) => setTextInput(e.target.value)}
-          rows="4"
+          rows={4}
         />
         <button className="text-btn" disabled={userRole === "viewer" || !textInput.trim()} onClick={handleAdd}>
           Add to Canvas
@@ -254,17 +276,22 @@ function TextPanel({ onAddText }) {
   );
 }
 
-function parseRgb(rgb) {
+function parseRgb(rgb: string) {
   const match = rgb.match(/rgb\((\d+),\s*(\d+),\s*(\d+)\)/);
   if (!match) return { r: 255, g: 255, b: 255 };
   return { r: Number(match[1]), g: Number(match[2]), b: Number(match[3]) };
 }
 
-function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
+interface BackgroundPanelProps {
+  backgroundColor: string;
+  onBackgroundChange: (color: string) => void;
+}
+
+function BackgroundPanel({ backgroundColor, onBackgroundChange }: BackgroundPanelProps) {
   const userRole = useStore((state) => state.userRole);
   const color = parseRgb(backgroundColor);
 
-  const handleColorChange = (channel, value) => {
+  const handleColorChange = (channel: "r" | "g" | "b", value: number) => {
     const newColor = { ...color, [channel]: Math.max(0, Math.min(255, value)) };
     const rgbString = `rgb(${newColor.r}, ${newColor.g}, ${newColor.b})`;
     onBackgroundChange(rgbString);
@@ -328,7 +355,12 @@ function BackgroundPanel({ backgroundColor, onBackgroundChange }) {
   );
 }
 
-function StrokePanel({ selectedStroke, onStrokeChange }) {
+interface StrokePanelProps {
+  selectedStroke: string;
+  onStrokeChange: (stroke: string) => void;
+}
+
+function StrokePanel({ selectedStroke, onStrokeChange }: StrokePanelProps) {
   const userRole = useStore((state) => state.userRole);
   return (
     <div className="side-menu__panel">
@@ -367,12 +399,12 @@ function LayersPanel() {
   const redo = useStore((state) => state.redo);
   const userRole = useStore((state) => state.userRole);
 
-  const [editingId, setEditingId] = useState(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState("");
 
   const orderedElements = [...elements].slice().reverse();
 
-  const moveLayer = (realIndex, offset) => {
+  const moveLayer = (realIndex: number, offset: number) => {
     reorderElements(realIndex, realIndex + offset);
   };
 
@@ -484,7 +516,13 @@ function LayersPanel() {
   );
 }
 
-function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
+interface DesignsPanelProps {
+  onExportPNG: () => void;
+  onExportJSON: () => void;
+  onImportJSON: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }: DesignsPanelProps) {
   const documentId = useStore((state) => state.documentId);
   const documentName = useStore((state) => state.documentName);
   const documentVersion = useStore((state) => state.documentVersion);
@@ -497,29 +535,26 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
   const loadDocument = useStore((state) => state.loadDocument);
   const resetDocument = useStore((state) => state.resetDocument);
   const userRole = useStore((state) => state.userRole);
+  const showToast = useStore((state) => state.showToast);
 
-  // Auth states & actions
   const user = useStore((state) => state.user);
   const setUser = useStore((state) => state.setUser);
   const setAccessToken = useStore((state) => state.setAccessToken);
   const logoutUserStore = useStore((state) => state.logoutUser);
 
-  const [designs, setDesigns] = useState([]);
+  const [designs, setDesigns] = useState<any[]>([]);
   const [loadingList, setLoadingList] = useState(false);
 
-  // Version history state
-  const [versions, setVersions] = useState([]);
+  const [versions, setVersions] = useState<any[]>([]);
   const [loadingVersions, setLoadingVersions] = useState(false);
 
-  // Collaboration permissions state
-  const [permissions, setPermissions] = useState([]);
+  const [permissions, setPermissions] = useState<any[]>([]);
   const [loadingPermissions, setLoadingPermissions] = useState(false);
   const [shareEmail, setShareEmail] = useState("");
   const [shareRole, setShareRole] = useState("viewer");
   const [sharing, setSharing] = useState(false);
 
-  // Form tab: 'login' | 'register'
-  const [authTab, setAuthTab] = useState("login");
+  const [authTab, setAuthTab] = useState<"login" | "register">("login");
   const [emailInput, setEmailInput] = useState("");
   const [passwordInput, setPasswordInput] = useState("");
   const [authError, setAuthError] = useState("");
@@ -532,7 +567,7 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
       setLoadingList(true);
       const list = await listDocuments();
       setDesigns(list);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error loading designs:", e);
     } finally {
       setLoadingList(false);
@@ -548,7 +583,7 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
       setLoadingVersions(true);
       const list = await listVersions(documentId);
       setVersions(list);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error loading versions:", e);
     } finally {
       setLoadingVersions(false);
@@ -564,7 +599,7 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
       setLoadingPermissions(true);
       const list = await listPermissions(documentId);
       setPermissions(list);
-    } catch (e) {
+    } catch (e: any) {
       console.error("Error loading permissions:", e);
     } finally {
       setLoadingPermissions(false);
@@ -585,7 +620,6 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
     }, 0);
 
     return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [documentId, user]);
 
   const handleSave = async () => {
@@ -596,7 +630,7 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
         name: documentName.trim() || "Untitled Design",
         data: serializeDocument(),
         version: documentId ? documentVersion : undefined,
-        manual: true, // Manual save creates a snapshot
+        manual: true,
       };
 
       if (documentId) {
@@ -607,17 +641,20 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
         loadDocument(doc);
       }
       setSaveStatus("saved");
+      showToast("Design saved successfully.", "success");
       fetchVersions();
       fetchDesigns();
       fetchPermissions();
       setTimeout(() => setSaveStatus(""), 3000);
-    } catch (e) {
-      if (e.message === "conflict") {
+    } catch (e: any) {
+      if (e.status === 409 || e.message === "conflict") {
         setSaveStatus("conflict");
         setSaveError("Version conflict: This design has been updated elsewhere.");
+        showToast("Version conflict: Please refresh or duplicate your work.", "error");
       } else {
         setSaveError(e.message);
         setSaveStatus("error");
+        showToast("Save failed: " + e.message, "error");
       }
     }
   };
@@ -627,18 +664,19 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
     setSaveStatus("");
   };
 
-  const handleLoad = async (id) => {
+  const handleLoad = async (id: string) => {
     try {
       setSaveStatus("loading");
       const doc = await getDocument(id);
       loadDocument(doc);
       setSaveStatus("");
-    } catch (e) {
-      alert("Failed to load design: " + e.message);
+      showToast("Design loaded.", "success");
+    } catch (e: any) {
+      showToast("Failed to load design: " + e.message, "error");
     }
   };
 
-  const handleDelete = async (id, e) => {
+  const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     if (!window.confirm("Are you sure you want to delete this design?")) return;
     try {
@@ -647,12 +685,13 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
         resetDocument();
       }
       fetchDesigns();
-    } catch (e) {
-      alert("Failed to delete design: " + e.message);
+      showToast("Design deleted.", "success");
+    } catch (e: any) {
+      showToast("Failed to delete design: " + e.message, "error");
     }
   };
 
-  const handleShare = async (e) => {
+  const handleShare = async (e: React.FormEvent) => {
     e.preventDefault();
     const email = shareEmail.trim();
     if (!email) return;
@@ -661,24 +700,26 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
       await shareDocument(documentId, { email, role: shareRole });
       setShareEmail("");
       fetchPermissions();
-    } catch (err) {
-      alert("Failed to share design: " + err.message);
+      showToast("Design shared successfully.", "success");
+    } catch (err: any) {
+      showToast("Failed to share design: " + err.message, "error");
     } finally {
       setSharing(false);
     }
   };
 
-  const handleRevokePermission = async (permId) => {
+  const handleRevokePermission = async (permId: string) => {
     if (!window.confirm("Are you sure you want to revoke access for this user?")) return;
     try {
       await removePermission(documentId, permId);
       fetchPermissions();
-    } catch (err) {
-      alert("Failed to revoke access: " + err.message);
+      showToast("Access revoked.", "success");
+    } catch (err: any) {
+      showToast("Failed to revoke access: " + err.message, "error");
     }
   };
 
-  const handleAuthSubmit = async (e) => {
+  const handleAuthSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setAuthError("");
     const email = emailInput.trim();
@@ -694,15 +735,18 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
         const data = await loginUser(email, password);
         setUser(data.user);
         setAccessToken(data.accessToken);
+        showToast("Welcome back!", "success");
       } else {
         const data = await registerUser(email, password);
         setUser(data.user);
         setAccessToken(data.accessToken);
+        showToast("Account created successfully.", "success");
       }
       setEmailInput("");
       setPasswordInput("");
-    } catch (err) {
+    } catch (err: any) {
       setAuthError(err.message || "Authentication failed");
+      showToast(err.message || "Authentication failed", "error");
     }
   };
 
@@ -716,17 +760,19 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
       setDesigns([]);
       setVersions([]);
       setPermissions([]);
+      showToast("Logged out successfully.", "info");
     }
   };
 
-  const handleRestore = async (versionId) => {
+  const handleRestore = async (versionId: string) => {
     try {
       const doc = await restoreVersion(documentId, versionId);
       loadDocument(doc);
       fetchVersions();
       fetchPermissions();
-    } catch (err) {
-      alert("Failed to restore version: " + err.message);
+      showToast(`Restored design to version ${doc.version}`, "success");
+    } catch (err: any) {
+      showToast("Failed to restore version: " + err.message, "error");
     }
   };
 
@@ -961,7 +1007,6 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
         </div>
       )}
 
-      {/* Export & Import Section */}
       <div className="export-import-section side-menu__section-card">
         <p className="side-menu__panel-title">Export & Import</p>
         <div className="side-menu__list-vertical">
@@ -997,7 +1042,30 @@ function DesignsPanel({ onExportPNG, onExportJSON, onImportJSON }) {
   );
 }
 
-function SideMenu({
+interface SideMenuProps {
+  collapsed: boolean;
+  onToggle: () => void;
+  boardWidth: number;
+  boardHeight: number;
+  onBoardWidthChange: (width: number) => void;
+  onBoardHeightChange: (height: number) => void;
+  activeTool: string;
+  onToolChange: (tool: string) => void;
+  onAddShape: (shapeType: string) => void;
+  onAddText: (text: string) => void;
+  backgroundColor: string;
+  onBackgroundChange: (color: string) => void;
+  selectedStroke: string;
+  onStrokeChange: (stroke: string) => void;
+  selectedItem: any;
+  onDeleteSelected: () => void;
+  onChangeSelectedColor: (color: string) => void;
+  onExportPNG: () => void;
+  onExportJSON: () => void;
+  onImportJSON: (e: React.ChangeEvent<HTMLInputElement>) => void;
+}
+
+export default function SideMenu({
   collapsed,
   onToggle,
   boardWidth,
@@ -1018,9 +1086,9 @@ function SideMenu({
   onExportPNG,
   onExportJSON,
   onImportJSON,
-}) {
-  const [activeShape, setActiveShape] = useState(null);
-  const userRole = useStore((state) => state.userRole);
+}: SideMenuProps) {
+  const [activeShape, setActiveShape] = useState<string | null>(null);
+  const userRole = useStore((state: any) => state.userRole);
 
   const renderToolPanel = () => {
     switch (activeTool) {
@@ -1133,5 +1201,3 @@ function SideMenu({
     </aside>
   );
 }
-
-export default SideMenu;

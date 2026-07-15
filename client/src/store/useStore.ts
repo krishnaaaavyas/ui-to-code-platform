@@ -1,50 +1,61 @@
 import { create } from "zustand";
+import { getSocket } from "../lib/socket";
 
-/**
- * @typedef {Object} CanvasElement
- * @property {string} id
- * @property {'rect' | 'circle' | 'triangle' | 'diamond' | 'line' | 'text' | 'path'} type
- * @property {number} x
- * @property {number} y
- * @property {boolean} visible
- * @property {boolean} locked
- * @property {string} name
- * @property {number} [width]
- * @property {number} [height]
- * @property {number} [radius]
- * @property {string} [text]
- * @property {number} [fontSize]
- * @property {string} [fill]
- * @property {string} [stroke]
- * @property {number} [strokeWidth]
- * @property {string} [lineCap]
- * @property {number[]} [points]
- * @property {number} [rotation]
- */
+export interface CanvasElement {
+  id: string;
+  type: "rect" | "rectangle" | "circle" | "triangle" | "diamond" | "line" | "text" | "path" | "image" | "pen";
+  x: number;
+  y: number;
+  visible: boolean;
+  locked: boolean;
+  name: string;
+  width?: number;
+  height?: number;
+  radius?: number;
+  text?: string;
+  fontSize?: number;
+  fontFamily?: string;
+  fill?: string | null;
+  stroke?: string | null;
+  strokeWidth?: number;
+  lineCap?: string;
+  points?: number[];
+  rotation?: number;
+  url?: string | null;
+  src?: string | null;
+}
 
-const getSnapshot = (state) => ({
+export interface DocumentSnapshot {
+  boardWidth: number;
+  boardHeight: number;
+  backgroundColor: string;
+  selectedElementId: string | null;
+  elements: CanvasElement[];
+}
+
+const getSnapshot = (state: any): DocumentSnapshot => ({
   boardWidth: state.boardWidth,
   boardHeight: state.boardHeight,
   backgroundColor: state.backgroundColor,
   selectedElementId: state.selectedElementId,
-  elements: state.elements.map((element) => ({
-    ...element,
-    points: element.points ? [...element.points] : undefined,
+  elements: state.elements.map((el: any) => ({
+    ...el,
+    points: el.points ? [...el.points] : undefined,
   })),
 });
 
-const loadSnapshot = (snapshot) => ({
+const loadSnapshot = (snapshot: DocumentSnapshot) => ({
   boardWidth: snapshot.boardWidth,
   boardHeight: snapshot.boardHeight,
   backgroundColor: snapshot.backgroundColor,
   selectedElementId: snapshot.selectedElementId,
-  elements: snapshot.elements.map((element) => ({
-    ...element,
-    points: element.points ? [...element.points] : undefined,
+  elements: snapshot.elements.map((el: any) => ({
+    ...el,
+    points: el.points ? [...el.points] : undefined,
   })),
 });
 
-const initialSnapshot = {
+const initialSnapshot: DocumentSnapshot = {
   boardWidth: 2200,
   boardHeight: 1400,
   backgroundColor: "#ffffff",
@@ -52,31 +63,40 @@ const initialSnapshot = {
   elements: [],
 };
 
-const pushState = (state, patch) => {
+const historyLimit = 50;
+
+const pushState = (state: any, patch: any) => {
   const mergedState = { ...state, ...patch };
   const snapshot = getSnapshot(mergedState);
   const nextHistory = state.history.slice(0, state.historyIndex + 1);
+  const finalHistory = [...nextHistory, snapshot];
+  
+  let nextIndex = nextHistory.length;
+  if (finalHistory.length > historyLimit) {
+    finalHistory.shift();
+    nextIndex = historyLimit - 1;
+  }
+  
   return {
     ...patch,
     isDirty: true,
     saveStatus: "idle",
-    history: [...nextHistory, snapshot],
-    historyIndex: nextHistory.length,
+    history: finalHistory,
+    historyIndex: nextIndex,
   };
 };
 
-export const useStore = create((set, get) => ({
+export const useStore = create<any>((set: any, get: any) => ({
   // User & Session Authentication
   user: null,
   accessToken: null,
   isAuthReady: false,
-  socket: null, // Socket.IO client instance
 
   // Persistent document metadata
   documentId: null,
   documentName: "Untitled Design",
-  documentVersion: 1, // keeps track of DB version
-  userRole: "owner", // "owner" | "editor" | "viewer"
+  documentVersion: 1,
+  userRole: "owner",
   isDirty: false,
   saveStatus: "idle", // "idle" | "saving" | "saved" | "error" | "conflict"
   saveError: null,
@@ -101,12 +121,25 @@ export const useStore = create((set, get) => ({
   history: [initialSnapshot],
   historyIndex: 0,
 
+  // Toast notification state
+  toast: null,
+  showToast: (message: string, type: "error" | "success" | "info" = "info") => {
+    set({ toast: { message, type } });
+    setTimeout(() => {
+      const currentToast = get().toast;
+      if (currentToast && currentToast.message === message) {
+        set({ toast: null });
+      }
+    }, 4000);
+  },
+  dismissToast: () => set({ toast: null }),
+
   // History actions
   canUndo: () => get().historyIndex > 0,
   canRedo: () => get().historyIndex < get().history.length - 1,
 
   undo: () =>
-    set((state) => {
+    set((state: any) => {
       if (state.historyIndex <= 0) return {};
       const nextIndex = state.historyIndex - 1;
       const snapshot = state.history[nextIndex];
@@ -119,7 +152,7 @@ export const useStore = create((set, get) => ({
     }),
 
   redo: () =>
-    set((state) => {
+    set((state: any) => {
       if (state.historyIndex >= state.history.length - 1) return {};
       const nextIndex = state.historyIndex + 1;
       const snapshot = state.history[nextIndex];
@@ -131,39 +164,70 @@ export const useStore = create((set, get) => ({
       };
     }),
 
+  commitHistory: () =>
+    set((state: any) => {
+      const snapshot = getSnapshot(state);
+      const nextHistory = state.history.slice(0, state.historyIndex + 1);
+      const finalHistory = [...nextHistory, snapshot];
+      
+      let nextIndex = nextHistory.length;
+      if (finalHistory.length > historyLimit) {
+        finalHistory.shift();
+        nextIndex = historyLimit - 1;
+      }
+      
+      return {
+        isDirty: true,
+        saveStatus: "idle",
+        history: finalHistory,
+        historyIndex: nextIndex,
+      };
+    }),
+
   // UI state actions
-  setActiveTool: (tool) => set({ activeTool: tool }),
-  setSelectedStroke: (stroke) => set({ selectedStroke: stroke }),
-  setMenuCollapsed: (collapsed) => set({ menuCollapsed: collapsed }),
-  setIsDrawing: (value) => set({ isDrawing: value }),
-  setEditingTextId: (id) => set({ editingTextId: id }),
-  setTransformingId: (id) => set({ transformingId: id }),
-  setDraftElement: (draft) => set({ draftElement: draft }),
+  setActiveTool: (tool: string) => set({ activeTool: tool }),
+  setSelectedStroke: (stroke: string) => set({ selectedStroke: stroke }),
+  setMenuCollapsed: (collapsed: boolean) => set({ menuCollapsed: collapsed }),
+  setIsDrawing: (value: boolean) => set({ isDrawing: value }),
+  setEditingTextId: (id: string | null) => set({ editingTextId: id }),
+  setTransformingId: (id: string | null) => set({ transformingId: id }),
+  setDraftElement: (draft: any) => set({ draftElement: draft }),
 
   // Document metadata actions
-  setDocumentName: (name) => set({ documentName: name, isDirty: true, saveStatus: "idle" }),
-  setDocumentId: (id) => set({ documentId: id }),
-  setIsSaving: (isSaving) => set({ saveStatus: isSaving ? "saving" : get().saveStatus }),
-  setSaveStatus: (status) => set({ saveStatus: status }),
-  setSaveError: (error) => set({ saveError: error }),
-  setDocumentVersion: (version) => set({ documentVersion: version }),
+  setDocumentName: (name: string) => set({ documentName: name, isDirty: true, saveStatus: "idle" }),
+  setDocumentId: (id: string | null) => set({ documentId: id }),
+  setIsSaving: (isSaving: boolean) => set({ saveStatus: isSaving ? "saving" : get().saveStatus }),
+  setSaveStatus: (status: string) => set({ saveStatus: status }),
+  setSaveError: (error: any) => set({ saveError: error }),
+  setDocumentVersion: (version: number) => set({ documentVersion: version }),
 
   // Auth actions
-  setUser: (user) => set({ user }),
-  setAccessToken: (accessToken) => set({ accessToken }),
-  setAuthReady: (isAuthReady) => set({ isAuthReady }),
+  setUser: (user: any) => set({ user }),
+  setAccessToken: (accessToken: string | null) => set({ accessToken }),
+  setAuthReady: (isAuthReady: boolean) => set({ isAuthReady }),
 
-  logoutUser: () => set({ user: null, accessToken: null, documentId: null, elements: [], history: [initialSnapshot], historyIndex: 0, isDirty: false, saveStatus: "idle" }),
+  logoutUser: () => set({
+    user: null,
+    accessToken: null,
+    documentId: null,
+    elements: [],
+    history: [initialSnapshot],
+    historyIndex: 0,
+    isDirty: false,
+    saveStatus: "idle"
+  }),
 
   serializeDocument: () => {
     const state = get();
     return {
+      schemaVersion: 2,
+      name: state.documentName,
       board: {
         width: state.boardWidth,
         height: state.boardHeight,
         background: state.backgroundColor,
       },
-      elements: state.elements.map((el, index) => ({
+      elements: state.elements.map((el: any, index: number) => ({
         id: el.id,
         type: el.type === "rectangle" ? "rect" : el.type === "path" ? "pen" : el.type,
         x: el.x,
@@ -181,49 +245,52 @@ export const useStore = create((set, get) => ({
         points: el.points ? [...el.points] : undefined,
         src: el.url || el.src,
         locked: !!el.locked,
-        hidden: el.visible === false,
+        visible: el.visible !== false,
         zIndex: index,
         name: el.name || el.type,
       })),
     };
   },
 
-  loadDocument: (doc) => {
+  loadDocument: (doc: any) => {
     const data = doc.data || {};
     const board = data.board || data.boardSettings || {};
     const boardWidth = board.width ?? board.boardWidth ?? data.boardWidth ?? 2200;
     const boardHeight = board.height ?? board.boardHeight ?? data.boardHeight ?? 1400;
     const backgroundColor = board.background ?? board.backgroundColor ?? data.backgroundColor ?? "#ffffff";
 
+    const elements = (data.elements || []).map((el: any) => {
+      let type = el.type;
+      if (type === "rect") type = "rectangle";
+      if (type === "pen") type = "path";
+
+      return {
+        ...el,
+        type,
+        visible: el.hidden !== true && el.visible !== false,
+        url: el.src || el.url,
+        points: el.points ? [...el.points] : undefined,
+      };
+    });
+
     const loadedSnapshot = {
       boardWidth,
       boardHeight,
       backgroundColor,
       selectedElementId: null,
-      elements: (data.elements || []).map((el) => {
-        let type = el.type;
-        if (type === "rect") type = "rectangle";
-        if (type === "pen") type = "path";
-
-        return {
-          ...el,
-          type,
-          visible: el.hidden !== true && el.visible !== false,
-          url: el.src || el.url,
-          points: el.points ? [...el.points] : undefined,
-        };
-      }),
+      elements,
     };
+
     set({
       documentId: doc.id,
-      documentName: doc.name,
+      documentName: doc.name || "Untitled Design",
       documentVersion: doc.version || 1,
       userRole: doc.user_role || "owner",
       boardWidth,
       boardHeight,
       backgroundColor,
       selectedElementId: null,
-      elements: loadedSnapshot.elements,
+      elements,
       history: [loadedSnapshot],
       historyIndex: 0,
       isDirty: false,
@@ -259,11 +326,12 @@ export const useStore = create((set, get) => ({
   },
 
   // Document state actions
-  addElement: (element) =>
-    set((state) => {
+  addElement: (element: any) =>
+    set((state: any) => {
       const nextElements = [...state.elements, element];
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.add", payload: element }
         });
@@ -274,27 +342,33 @@ export const useStore = create((set, get) => ({
       });
     }),
 
-  updateElement: (id, patch) =>
-    set((state) => {
-      const nextElements = state.elements.map((element) =>
+  updateElement: (id: string, patch: any, commit = true) =>
+    set((state: any) => {
+      const nextElements = state.elements.map((element: any) =>
         element.id === id ? { ...element, ...patch } : element
       );
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.update", payload: { id, patch } }
         });
       }
-      return pushState(state, { elements: nextElements });
+
+      if (commit) {
+        return pushState(state, { elements: nextElements });
+      } else {
+        return { elements: nextElements };
+      }
     }),
 
-  deleteElement: (id) =>
-    set((state) => {
-      const nextElements = state.elements.filter((element) => element.id !== id);
-      const nextSelectedId =
-        state.selectedElementId === id ? null : state.selectedElementId;
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+  deleteElement: (id: string) =>
+    set((state: any) => {
+      const nextElements = state.elements.filter((element: any) => element.id !== id);
+      const nextSelectedId = state.selectedElementId === id ? null : state.selectedElementId;
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.delete", payload: { id } }
         });
@@ -305,8 +379,8 @@ export const useStore = create((set, get) => ({
       });
     }),
 
-  reorderElements: (fromIndex, toIndex) =>
-    set((state) => {
+  reorderElements: (fromIndex: number, toIndex: number) =>
+    set((state: any) => {
       const elements = state.elements;
       if (
         fromIndex < 0 ||
@@ -319,8 +393,9 @@ export const useStore = create((set, get) => ({
       const nextElements = [...elements];
       const [removed] = nextElements.splice(fromIndex, 1);
       nextElements.splice(toIndex, 0, removed);
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.reorder", payload: { from: fromIndex, to: toIndex } }
         });
@@ -328,14 +403,15 @@ export const useStore = create((set, get) => ({
       return pushState(state, { elements: nextElements });
     }),
 
-  toggleElementVisibility: (id) =>
-    set((state) => {
-      const nextElements = state.elements.map((element) =>
+  toggleElementVisibility: (id: string) =>
+    set((state: any) => {
+      const nextElements = state.elements.map((element: any) =>
         element.id === id ? { ...element, visible: !element.visible } : element
       );
-      const nextVisibility = nextElements.find((el) => el.id === id)?.visible;
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const nextVisibility = nextElements.find((el: any) => el.id === id)?.visible;
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.update", payload: { id, patch: { visible: nextVisibility } } }
         });
@@ -343,14 +419,15 @@ export const useStore = create((set, get) => ({
       return pushState(state, { elements: nextElements });
     }),
 
-  toggleElementLocked: (id) =>
-    set((state) => {
-      const nextElements = state.elements.map((element) =>
+  toggleElementLocked: (id: string) =>
+    set((state: any) => {
+      const nextElements = state.elements.map((element: any) =>
         element.id === id ? { ...element, locked: !element.locked } : element
       );
-      const nextLocked = nextElements.find((el) => el.id === id)?.locked;
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const nextLocked = nextElements.find((el: any) => el.id === id)?.locked;
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.update", payload: { id, patch: { locked: nextLocked } } }
         });
@@ -358,13 +435,14 @@ export const useStore = create((set, get) => ({
       return pushState(state, { elements: nextElements });
     }),
 
-  renameElement: (id, name) =>
-    set((state) => {
-      const nextElements = state.elements.map((element) =>
+  renameElement: (id: string, name: string) =>
+    set((state: any) => {
+      const nextElements = state.elements.map((element: any) =>
         element.id === id ? { ...element, name } : element
       );
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.update", payload: { id, patch: { name } } }
         });
@@ -372,15 +450,14 @@ export const useStore = create((set, get) => ({
       return pushState(state, { elements: nextElements });
     }),
 
-  selectElement: (id) => set({ selectedElementId: id }),
+  selectElement: (id: string | null) => set({ selectedElementId: id }),
+  setSelectedId: (id: string | null) => set({ selectedElementId: id }),
 
-  // Deprecated/Alias methods for compatibility
-  setSelectedId: (id) => set({ selectedElementId: id }),
-
-  setBoardWidth: (width) =>
-    set((state) => {
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+  setBoardWidth: (width: number) =>
+    set((state: any) => {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "canvas.update", payload: { boardWidth: width } }
         });
@@ -388,10 +465,11 @@ export const useStore = create((set, get) => ({
       return pushState(state, { boardWidth: width });
     }),
 
-  setBoardHeight: (height) =>
-    set((state) => {
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+  setBoardHeight: (height: number) =>
+    set((state: any) => {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "canvas.update", payload: { boardHeight: height } }
         });
@@ -399,10 +477,11 @@ export const useStore = create((set, get) => ({
       return pushState(state, { boardHeight: height });
     }),
 
-  setBackgroundColor: (color) =>
-    set((state) => {
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+  setBackgroundColor: (color: string) =>
+    set((state: any) => {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "canvas.update", payload: { backgroundColor: color } }
         });
@@ -410,15 +489,16 @@ export const useStore = create((set, get) => ({
       return pushState(state, { backgroundColor: color });
     }),
 
-  bringToFront: (id) =>
-    set((state) => {
-      const idx = state.elements.findIndex((el) => el.id === id);
+  bringToFront: (id: string) =>
+    set((state: any) => {
+      const idx = state.elements.findIndex((el: any) => el.id === id);
       if (idx === -1) return {};
       const nextElements = [...state.elements];
       const [item] = nextElements.splice(idx, 1);
       nextElements.push(item);
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "canvas.update", payload: { elements: nextElements } }
         });
@@ -426,15 +506,16 @@ export const useStore = create((set, get) => ({
       return pushState(state, { elements: nextElements });
     }),
 
-  sendToBack: (id) =>
-    set((state) => {
-      const idx = state.elements.findIndex((el) => el.id === id);
+  sendToBack: (id: string) =>
+    set((state: any) => {
+      const idx = state.elements.findIndex((el: any) => el.id === id);
       if (idx === -1) return {};
       const nextElements = [...state.elements];
       const [item] = nextElements.splice(idx, 1);
       nextElements.unshift(item);
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "canvas.update", payload: { elements: nextElements } }
         });
@@ -442,11 +523,11 @@ export const useStore = create((set, get) => ({
       return pushState(state, { elements: nextElements });
     }),
 
-  centerElement: (id, direction) =>
-    set((state) => {
-      const element = state.elements.find((el) => el.id === id);
+  centerElement: (id: string, direction: "horizontal" | "vertical") =>
+    set((state: any) => {
+      const element = state.elements.find((el: any) => el.id === id);
       if (!element) return {};
-      const patch = {};
+      const patch: any = {};
       
       if (direction === "horizontal") {
         const width = element.width || (element.radius ? element.radius * 2 : 120);
@@ -456,12 +537,13 @@ export const useStore = create((set, get) => ({
         patch.y = Math.round((state.boardHeight - height) / 2);
       }
 
-      const nextElements = state.elements.map((el) =>
+      const nextElements = state.elements.map((el: any) =>
         el.id === id ? { ...el, ...patch } : el
       );
 
-      if (state.socket && state.socket.connected) {
-        state.socket.emit("element.op", {
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("element.op", {
           documentId: state.documentId,
           op: { type: "element.update", payload: { id, patch } }
         });
@@ -469,9 +551,9 @@ export const useStore = create((set, get) => ({
       return pushState(state, { elements: nextElements });
     }),
 
-  duplicateElement: (id) => {
+  duplicateElement: (id: string) => {
     const state = get();
-    const element = state.elements.find((el) => el.id === id);
+    const element = state.elements.find((el: any) => el.id === id);
     if (!element) return;
     const duplicated = {
       ...element,
@@ -484,30 +566,30 @@ export const useStore = create((set, get) => ({
   },
 
   // Remote elements & board actions (Socket.IO updates)
-  remoteAddElement: (element) =>
-    set((state) => {
-      const exists = state.elements.some((el) => el.id === element.id);
+  remoteAddElement: (element: any) =>
+    set((state: any) => {
+      const exists = state.elements.some((el: any) => el.id === element.id);
       if (exists) return {};
       return { elements: [...state.elements, element] };
     }),
 
-  remoteUpdateElement: (id, patch) =>
-    set((state) => {
-      const nextElements = state.elements.map((el) =>
+  remoteUpdateElement: (id: string, patch: any) =>
+    set((state: any) => {
+      const nextElements = state.elements.map((el: any) =>
         el.id === id ? { ...el, ...patch } : el
       );
       return { elements: nextElements };
     }),
 
-  remoteDeleteElement: (id) =>
-    set((state) => {
-      const nextElements = state.elements.filter((el) => el.id !== id);
+  remoteDeleteElement: (id: string) =>
+    set((state: any) => {
+      const nextElements = state.elements.filter((el: any) => el.id !== id);
       const nextSelectedId = state.selectedElementId === id ? null : state.selectedElementId;
       return { elements: nextElements, selectedElementId: nextSelectedId };
     }),
 
-  remoteReorderElements: (fromIndex, toIndex) =>
-    set((state) => {
+  remoteReorderElements: (fromIndex: number, toIndex: number) =>
+    set((state: any) => {
       const elements = state.elements;
       if (
         fromIndex < 0 ||
@@ -523,9 +605,9 @@ export const useStore = create((set, get) => ({
       return { elements: nextElements };
     }),
 
-  remoteUpdateBoard: (patch) =>
+  remoteUpdateBoard: (patch: any) =>
     set(() => {
-      const update = {};
+      const update: any = {};
       if (patch.boardWidth !== undefined) update.boardWidth = patch.boardWidth;
       if (patch.boardHeight !== undefined) update.boardHeight = patch.boardHeight;
       if (patch.backgroundColor !== undefined) update.backgroundColor = patch.backgroundColor;

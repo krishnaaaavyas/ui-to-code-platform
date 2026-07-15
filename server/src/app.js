@@ -13,7 +13,24 @@ const uploadsRoutes = require("./routes/uploads.routes");
 const aiRoutes = require("./routes/ai.routes");
 const errorHandler = require("./middleware/errorHandler");
 
+// Reject production startup if secrets are missing or weak
+if (process.env.NODE_ENV === "production") {
+  const accessSecret = process.env.JWT_ACCESS_SECRET;
+  const refreshSecret = process.env.JWT_REFRESH_SECRET;
+  if (!accessSecret || accessSecret.length < 32 || accessSecret.toLowerCase().includes("secret") || accessSecret.includes("supersecret")) {
+    console.error("CRITICAL ERROR: JWT_ACCESS_SECRET is missing, weak, or too short in production.");
+    process.exit(1);
+  }
+  if (!refreshSecret || refreshSecret.length < 32 || refreshSecret.toLowerCase().includes("secret") || refreshSecret.includes("supersecret")) {
+    console.error("CRITICAL ERROR: JWT_REFRESH_SECRET is missing, weak, or too short in production.");
+    process.exit(1);
+  }
+}
+
 const app = express();
+
+// Proxy-aware IP detection trust
+app.set("trust proxy", true);
 
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
@@ -26,10 +43,14 @@ app.use(
   })
 );
 app.use(cookieParser());
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "5mb" })); // Enforce size limit on JSON payloads too
 
 app.get("/api/health", (req, res) => {
-  res.json({ ok: true, timestamp: new Date().toISOString() });
+  res.json({
+    ok: true,
+    timestamp: new Date().toISOString(),
+    aiEnabled: !!process.env.OPENAI_API_KEY,
+  });
 });
 
 app.use("/api/auth", authRoutes);
@@ -42,4 +63,3 @@ app.use("/public/uploads", express.static(path.join(__dirname, "../public/upload
 app.use(errorHandler);
 
 module.exports = app;
-

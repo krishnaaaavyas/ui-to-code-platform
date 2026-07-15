@@ -20,8 +20,8 @@ The application is structured into two main components:
 
 ### Data Storage Dual-Mode
 To guarantee effortless local setup out-of-the-box, the backend features a **dual database layer**:
-- **PostgreSQL**: Used if `DATABASE_URL` is configured (see [schema.sql](server/src/db/schema.sql)).
-- **JSON File Fallback**: Automatically falls back to writing structured JSON data to `users.json`, `documents.json`, and `versions.json` in the `/server/src/db/` directory if no PostgreSQL database is connected.
+- **PostgreSQL**: Used in production if `DATABASE_URL` is configured (see [schema.sql](server/src/db/schema.sql)).
+- **SQLite Local Fallback**: Automatically falls back to writing structured relational data using `better-sqlite3` locally (saved in `server/src/db/sqlite.db`) if no PostgreSQL connection is provided. Tables and indexes are generated dynamically on startup.
 
 ---
 

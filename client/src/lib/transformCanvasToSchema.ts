@@ -1,7 +1,11 @@
-/**
- * Bounding box calculation for shapes
- */
-export function extractBounds(el) {
+export interface ElementBounds {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
+export function extractBounds(el: any): ElementBounds {
   if (el.type === "circle" || el.type === "triangle" || el.type === "diamond") {
     const r = el.radius || 60;
     return {
@@ -15,8 +19,8 @@ export function extractBounds(el) {
     if (!el.points || el.points.length === 0) {
       return { x: el.x || 0, y: el.y || 0, width: 0, height: 0 };
     }
-    const xs = el.points.filter((_, i) => i % 2 === 0);
-    const ys = el.points.filter((_, i) => i % 2 === 1);
+    const xs = el.points.filter((_: any, i: number) => i % 2 === 0);
+    const ys = el.points.filter((_: any, i: number) => i % 2 === 1);
     const xMin = Math.min(...xs);
     const xMax = Math.max(...xs);
     const yMin = Math.min(...ys);
@@ -36,7 +40,7 @@ export function extractBounds(el) {
   };
 }
 
-export function isContained(childBounds, parentBounds) {
+export function isContained(childBounds: ElementBounds, parentBounds: ElementBounds): boolean {
   const margin = 5;
   return (
     childBounds.x >= parentBounds.x - margin &&
@@ -46,10 +50,7 @@ export function isContained(childBounds, parentBounds) {
   );
 }
 
-/**
- * Detects text nodes fully contained inside a shape rectangle
- */
-export function detectTextInsideShape(shape, elements) {
+export function detectTextInsideShape(shape: any, elements: any[]): any[] {
   const shapeBounds = extractBounds(shape);
   return elements.filter((el) => {
     if (el.type !== "text" || el.id === shape.id) return false;
@@ -58,10 +59,7 @@ export function detectTextInsideShape(shape, elements) {
   });
 }
 
-/**
- * Finds all elements fully contained inside a container shape boundaries
- */
-export function findContainedElements(container, elements) {
+export function findContainedElements(container: any, elements: any[]): any[] {
   const containerBounds = extractBounds(container);
   return elements.filter((el) => {
     if (el.id === container.id) return false;
@@ -70,10 +68,7 @@ export function findContainedElements(container, elements) {
   });
 }
 
-/**
- * Heuristically groups nodes by alignment, tagging horizontal-row or vertical-column patterns
- */
-export function groupByAlignment(nodes) {
+export function groupByAlignment(nodes: any[]): any[] {
   if (nodes.length <= 1) return nodes;
 
   return nodes.map((node, i) => {
@@ -92,11 +87,8 @@ export function groupByAlignment(nodes) {
   });
 }
 
-/**
- * Heuristically detects repeated components (grid lists, rows) and annotates pattern tags
- */
-export function groupRepeatedPatterns(nodes) {
-  const dimensionsMap = {};
+export function groupRepeatedPatterns(nodes: any[]): any[] {
+  const dimensionsMap: Record<string, any[]> = {};
 
   nodes.forEach((node) => {
     if (node.kind === "card" || node.kind === "container") {
@@ -117,11 +109,8 @@ export function groupRepeatedPatterns(nodes) {
   return nodes;
 }
 
-/**
- * Constructs the recursive tree layout representation
- */
-export function buildNodeTree(document) {
-  const elements = (document.elements || []).filter((el) => el.hidden !== true && el.visible !== false);
+export function buildNodeTree(document: any) {
+  const elements = (document.elements || []).filter((el: any) => el.hidden !== true && el.visible !== false);
   const board = document.board || document.boardSettings || { width: 2200, height: 1400, background: "#ffffff" };
   const boardSettings = {
     boardWidth: board.width ?? board.boardWidth ?? 2200,
@@ -129,41 +118,41 @@ export function buildNodeTree(document) {
     backgroundColor: board.background ?? board.backgroundColor ?? "#ffffff"
   };
 
-  const boundsMap = new Map();
-  elements.forEach((el) => {
+  const boundsMap = new Map<string, ElementBounds>();
+  elements.forEach((el: any) => {
     boundsMap.set(el.id, extractBounds(el));
   });
 
-  const containers = elements.filter((el) => el.type === "rect" || el.type === "rectangle");
-  const sortedContainers = [...containers].sort((a, b) => {
-    const boxA = boundsMap.get(a.id);
-    const boxB = boundsMap.get(b.id);
+  const containers = elements.filter((el: any) => el.type === "rect" || el.type === "rectangle");
+  const sortedContainers = [...containers].sort((a: any, b: any) => {
+    const boxA = boundsMap.get(a.id)!;
+    const boxB = boundsMap.get(b.id)!;
     return boxA.width * boxA.height - boxB.width * boxB.height;
   });
 
-  const parentMap = new Map();
-  const childrenMap = new Map();
+  const parentMap = new Map<string, string>();
+  const childrenMap = new Map<string, any[]>();
 
-  sortedContainers.forEach((parent) => {
-    const parentBounds = boundsMap.get(parent.id);
+  sortedContainers.forEach((parent: any) => {
+    const parentBounds = boundsMap.get(parent.id)!;
     childrenMap.set(parent.id, []);
 
-    elements.forEach((child) => {
+    elements.forEach((child: any) => {
       if (child.id === parent.id) return;
       if (parentMap.has(child.id)) return;
 
-      const childBounds = boundsMap.get(child.id);
+      const childBounds = boundsMap.get(child.id)!;
       if (isContained(childBounds, parentBounds)) {
         parentMap.set(child.id, parent.id);
-        childrenMap.get(parent.id).push(child);
+        childrenMap.get(parent.id)!.push(child);
       }
     });
   });
 
-  const rootElements = elements.filter((el) => !parentMap.has(el.id));
+  const rootElements = elements.filter((el: any) => !parentMap.has(el.id));
 
-  const buildNode = (el) => {
-    const bounds = boundsMap.get(el.id);
+  const buildNode = (el: any): any => {
+    const bounds = boundsMap.get(el.id)!;
     const childrenElements = childrenMap.get(el.id) || [];
 
     let kind = "container";
@@ -176,21 +165,21 @@ export function buildNodeTree(document) {
     }
 
     if ((el.type === "rect" || el.type === "rectangle") && childrenElements.length === 1 && childrenElements[0].type === "text") {
-      const parentB = boundsMap.get(el.id);
+      const parentB = boundsMap.get(el.id)!;
       if (parentB.height < 90 && parentB.width < 320) {
         kind = "button";
       }
     }
 
     if ((el.type === "rect" || el.type === "rectangle") && kind !== "button") {
-      const parentB = boundsMap.get(el.id);
+      const parentB = boundsMap.get(el.id)!;
       if (parentB.height >= 30 && parentB.height <= 60 && parentB.width >= 100 && parentB.width <= 450 && (el.fill === "transparent" || el.fill === "#ffffff" || el.fill === "#fff")) {
         kind = "input";
       }
     }
 
     if (el.type === "rect" || el.type === "rectangle") {
-      const parentB = boundsMap.get(el.id);
+      const parentB = boundsMap.get(el.id)!;
       if (parentB.y < 120 && parentB.width > boardSettings.boardWidth * 0.7 && parentB.height < 100) {
         kind = "navbar";
       } else if (parentB.width > boardSettings.boardWidth * 0.7 && parentB.height > 250 && parentB.y < 400) {
@@ -198,7 +187,7 @@ export function buildNodeTree(document) {
       }
     }
 
-    const styles = {
+    const styles: any = {
       backgroundColor: el.fill || undefined,
       color: el.type === "text" ? el.fill : (el.stroke || undefined),
       borderColor: el.stroke || undefined,
@@ -207,7 +196,7 @@ export function buildNodeTree(document) {
       fontWeight: el.fontWeight || undefined,
     };
 
-    const node = {
+    const node: any = {
       id: el.id,
       kind,
       x: Math.round(bounds.x),
@@ -230,9 +219,9 @@ export function buildNodeTree(document) {
       node.text = childrenElements[0].text;
       node.children = [];
     } else if (childrenElements.length > 0) {
-      const sortedChildren = [...childrenElements].sort((a, b) => {
-        const boundsA = boundsMap.get(a.id);
-        const boundsB = boundsMap.get(b.id);
+      const sortedChildren = [...childrenElements].sort((a: any, b: any) => {
+        const boundsA = boundsMap.get(a.id)!;
+        const boundsB = boundsMap.get(b.id)!;
         if (Math.abs(boundsA.y - boundsB.y) < 15) {
           return boundsA.x - boundsB.x;
         }
@@ -242,8 +231,8 @@ export function buildNodeTree(document) {
       node.children = sortedChildren.map(buildNode);
 
       if (node.kind === "container") {
-        const hasImage = sortedChildren.some((c) => c.type === "image");
-        const hasText = sortedChildren.some((c) => c.type === "text");
+        const hasImage = sortedChildren.some((c: any) => c.type === "image");
+        const hasText = sortedChildren.some((c: any) => c.type === "text");
         if (hasImage && hasText && bounds.width < 500) {
           node.kind = "card";
         }
@@ -253,9 +242,9 @@ export function buildNodeTree(document) {
     return node;
   };
 
-  const sortedRoot = [...rootElements].sort((a, b) => {
-    const boundsA = boundsMap.get(a.id);
-    const boundsB = boundsMap.get(b.id);
+  const sortedRoot = [...rootElements].sort((a: any, b: any) => {
+    const boundsA = boundsMap.get(a.id)!;
+    const boundsB = boundsMap.get(b.id)!;
     if (Math.abs(boundsA.y - boundsB.y) < 20) {
       return boundsA.x - boundsB.x;
     }
@@ -277,6 +266,6 @@ export function buildNodeTree(document) {
   };
 }
 
-export function transformCanvasToSchema(document) {
+export function transformCanvasToSchema(document: any) {
   return buildNodeTree(document);
 }

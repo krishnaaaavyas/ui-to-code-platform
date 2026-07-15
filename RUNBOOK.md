@@ -14,7 +14,7 @@ This runbook documents operational procedures, service boundaries, deployment ru
   - Socket Server: `/socket.io` proxy via Nginx port `80` to backend port `4000`
 - **Data Stores**:
   - PostgreSQL (Production RDS / localhost port `5432` if configured)
-  - JSON Local File Fallback storage in `server/src/db/` (for local developer mode)
+  - SQLite Local Fallback database (`server/src/db/sqlite.db`) for dev mode.
 
 ---
 
@@ -79,10 +79,10 @@ To restore the database from a backup snapshot:
 cat backup_filename.sql | docker exec -i <postgres_container_name> psql -U postgres
 ```
 
-### File-Storage Recovery (JSON fallback mode)
-If running in fallback storage mode, local files are persisted in `server/src/db/`. Back up these files by archiving the directory:
+### SQLite Database Backup (Fallback mode)
+If running in SQLite fallback mode, the local relational database is persisted in `server/src/db/sqlite.db`. Back up the file by running:
 ```bash
-tar -czvf json_db_backup.tar.gz server/src/db/*.json
+cp server/src/db/sqlite.db server/src/db/sqlite_backup_$(date +%F).db
 ```
 
 ---

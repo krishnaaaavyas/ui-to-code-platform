@@ -1,8 +1,6 @@
-const OpenAI = require("openai");
+const { getOpenAIClient } = require("./openai");
 const { zodResponseFormat } = require("openai/helpers/zod");
 const { z } = require("zod");
-
-const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 // ─── Generated Code Schema ──────────────────────────────────────────────────
 const GeneratedFileSchema = z.object({
@@ -23,14 +21,11 @@ const GeneratedCodeSchema = z.object({
 /**
  * Refines existing React + Tailwind component files based on a new user instruction.
  * Uses OpenAI structured outputs to guarantee valid JSON-wrapped code artifacts.
- *
- * @param {Object} normalizedSchema - Enriched UI schema
- * @param {Array} existingFiles - Existing generated files list: [{ filename, language, content }]
- * @param {string} instruction - User refinement prompt (e.g. "make it responsive", "add dark mode")
- * @returns {Object} Refined code files structure
  */
 async function refineCodeWithLLM(normalizedSchema, existingFiles, instruction) {
-  if (!process.env.OPENAI_API_KEY) {
+  const client = getOpenAIClient();
+  if (!client) {
+    console.log("[refineCodeWithLLM] OpenAI API Key absent. Returning refined local fallback.");
     return buildFallbackRefinedCode(normalizedSchema, existingFiles, instruction);
   }
 
@@ -40,32 +35,18 @@ You are given:
 2. The existing generated React + Tailwind component files.
 3. A user instruction describing requested modifications/improvements.
 
-Your job is to refine, update, or rewrite the files to satisfy the user's instructions.
-
-Rules:
-- Output ONLY valid React functional components.
-- Use Tailwind CSS utility classes for ALL styling.
-- Break the design into separate reusable components if needed, or update the existing components.
-- The entry file (e.g., App.jsx) should import and assemble sub-components.
-- Each file must have full valid content (no placeholders, no "// TODO" comments, no partial code).
-- Modify the code to satisfy the user instructions (e.g. make it responsive, change colors, layout changes, component composition).
-- Retain the style/structure of unchanged parts where appropriate.
-`;
+Your job is to refine, update, or rewrite the files to satisfy the user's instructions.`;
 
   const userMessage = `Here is the normalized UI schema:
 \`\`\`json
 ${JSON.stringify(normalizedSchema, null, 2)}
 \`\`\`
-
-Here are the existing generated files:
+Existing files:
 \`\`\`json
 ${JSON.stringify(existingFiles, null, 2)}
 \`\`\`
-
-User instructions for refinement:
-${instruction}
-
-Please return the updated complete list of files conforming to the schema.`;
+Instructions:
+${instruction}`;
 
   const maxAttempts = 2;
   for (let attempt = 1; attempt <= maxAttempts; attempt++) {
@@ -79,31 +60,27 @@ Please return the updated complete list of files conforming to the schema.`;
         ],
         response_format: zodResponseFormat(GeneratedCodeSchema, "generated_code"),
         temperature: attempt === 1 ? 0.2 : 0.4,
-        max_tokens: 8192,
+        max_tokens: 8000,
+      }, {
+        timeout: 30000, // 30s timeout
       });
 
       const content = completion.choices[0].message.content;
       if (!content) {
         throw new Error("Empty content received from OpenAI.");
       }
-      const result = JSON.parse(content);
-      return result;
+      return JSON.parse(content);
     } catch (err) {
       console.warn(`[refineCodeWithLLM] Attempt ${attempt} failed: ${err.message}`);
       if (attempt === maxAttempts) {
         console.error("[refineCodeWithLLM] All attempts failed. Reverting to fallback builder.");
         return buildFallbackRefinedCode(normalizedSchema, existingFiles, instruction);
       }
-      // Delay before retrying
       await new Promise((r) => setTimeout(r, 1000));
     }
   }
 }
 
-/**
- * Builds a basic mock refinement without calling the LLM.
- * Prepends a refinement note/banner to App.jsx to visually verify flow works.
- */
 function buildFallbackRefinedCode(schema, existingFiles, instruction) {
   const files = (existingFiles || []).map((file) => {
     if (file.filename === "App.jsx" || file.filename === "App.tsx") {

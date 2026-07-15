@@ -1,6 +1,7 @@
 const permissionsService = require("../services/permissions.service");
 const documentsService = require("../services/documents.service");
 const authService = require("../services/auth.service");
+const { revokeSocketAccess } = require("../realtime/socket");
 
 exports.shareDocument = async (req, res, next) => {
   try {
@@ -42,6 +43,9 @@ exports.shareDocument = async (req, res, next) => {
       userId: targetUser.id,
       role,
     });
+
+    // Revoke current socket access so they reconnect with their updated/downgraded role
+    revokeSocketAccess(targetUser.id, documentId);
 
     res.status(201).json({
       id: permission.id,
@@ -96,6 +100,10 @@ exports.removePermission = async (req, res, next) => {
     }
 
     await permissionsService.remove(permissionId);
+
+    // Evict user immediately from room
+    revokeSocketAccess(targetPerm.user_id, documentId);
+
     res.status(204).send();
   } catch (err) {
     next(err);

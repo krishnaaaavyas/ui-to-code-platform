@@ -1,9 +1,44 @@
 const { Server } = require("socket.io");
 const jwt = require("jsonwebtoken");
+const { z } = require("zod");
 const documentsService = require("../services/documents.service");
+
+const JWT_ACCESS_SECRET = process.env.JWT_ACCESS_SECRET;
 
 let ioInstance;
 const roomPresences = new Map();
+const userSockets = new Map(); // Map of userId -> Set of socketId
+
+// Zod Validation Schemas
+const JoinRoomSchema = z.object({
+  documentId: z.string().uuid(),
+});
+
+const CursorMoveSchema = z.object({
+  documentId: z.string().uuid(),
+  x: z.number(),
+  y: z.number(),
+});
+
+const SelectionSetSchema = z.object({
+  documentId: z.string().uuid(),
+  elementId: z.string().nullable(),
+});
+
+const ElementOpSchema = z.object({
+  documentId: z.string().uuid(),
+  op: z.object({
+    type: z.enum([
+      "element.add",
+      "element.update",
+      "element.delete",
+      "element.reorder",
+      "canvas.update",
+    ]),
+    payload: z.any(),
+  }),
+  seq: z.number().optional(), // operation sequence/version check
+});
 
 function addPresence(roomId, socketId, presence) {
   if (!roomPresences.has(roomId)) {
@@ -37,21 +72,45 @@ function getRoomUsers(roomId) {
   return list;
 }
 
-function handleUserDisconnect(socketId, io) {
-  for (const [roomId, presences] of roomPresences.entries()) {
-    if (presences.has(socketId)) {
-      removePresence(roomId, socketId);
-      io.to(roomId).emit("user.left", { socketId });
+// Global hook to revoke a user's access when permissions change
+function revokeSocketAccess(userId, documentId) {
+  const socketIds = userSockets.get(userId);
+  if (!socketIds || !ioInstance) return;
+
+  for (const socketId of socketIds) {
+    const socket = ioInstance.sockets.sockets.get(socketId);
+    if (socket && socket.rooms.has(documentId)) {
+      socket.leave(documentId);
+      removePresence(documentId, socketId);
+      socket.to(documentId).emit("user.left", { socketId });
+      socket.emit("permission.revoked", {
+        documentId,
+        message: "Your permission to this design has been removed.",
+      });
+      console.log(`Revoked socket ${socketId} from room ${documentId}`);
     }
   }
 }
 
-async function checkDocumentAccess(userId, documentId) {
+// Verify socket has joined the room and holds write permission
+async function verifyWriteAccess(socket, documentId) {
+  if (!socket.rooms.has(documentId)) {
+    socket.emit("error-msg", { message: "Access denied: Room not joined." });
+    return false;
+  }
   try {
-    const doc = await documentsService.getById(documentId, userId);
-    return doc !== null;
+    const doc = await documentsService.getById(documentId, socket.user.id);
+    if (!doc) {
+      socket.emit("error-msg", { message: "Access denied: Document not found." });
+      return false;
+    }
+    if (doc.user_role === "viewer") {
+      socket.emit("error-msg", { message: "Access denied: Viewers cannot modify this design." });
+      return false;
+    }
+    return doc;
   } catch (err) {
-    console.error("Access check error in socket join:", err);
+    socket.emit("error-msg", { message: "Access verification error." });
     return false;
   }
 }
@@ -64,95 +123,168 @@ exports.initSocket = (server) => {
     },
   });
 
-  // Authenticate socket connections using JWT
+  // Authenticate socket connections using JWT from auth payload
   ioInstance.use((socket, next) => {
     const token = socket.handshake.auth?.token || socket.handshake.query?.token;
     if (!token) {
       return next(new Error("Authentication error: Token required"));
     }
     try {
-      const decoded = jwt.verify(token, process.env.JWT_ACCESS_SECRET);
+      if (!JWT_ACCESS_SECRET) {
+        return next(new Error("Authentication configuration missing on server"));
+      }
+      const decoded = jwt.verify(token, JWT_ACCESS_SECRET);
       socket.user = decoded; // { id, email }
       next();
     } catch (err) {
-      return next(new Error("Authentication error: Invalid token"));
+      return next(new Error("Authentication error: Invalid or expired token"));
     }
   });
 
   ioInstance.on("connection", (socket) => {
+    const userId = socket.user.id;
     console.log(`User connected: ${socket.user.email} (${socket.id})`);
 
-    socket.on("join-room", async ({ documentId }) => {
-      const doc = await documentsService.getById(documentId, socket.user.id);
-      if (!doc) {
-        socket.emit("error-msg", { message: "Access denied: You do not have permission to access this design." });
-        return;
+    // Track user socket ID mapping
+    if (!userSockets.has(userId)) {
+      userSockets.set(userId, new Set());
+    }
+    userSockets.get(userId).add(socket.id);
+
+    socket.on("join-room", async (data) => {
+      try {
+        const parsed = JoinRoomSchema.parse(data);
+        const documentId = parsed.documentId;
+
+        const doc = await documentsService.getById(documentId, userId);
+        if (!doc) {
+          socket.emit("error-msg", { message: "Access denied: Document not found or unauthorized." });
+          return;
+        }
+
+        // Leave any other document rooms previously joined (leak prevention)
+        const joinedRooms = Array.from(socket.rooms);
+        for (const room of joinedRooms) {
+          if (room !== socket.id && room !== documentId) {
+            socket.leave(room);
+            removePresence(room, socket.id);
+            socket.to(room).emit("user.left", { socketId: socket.id });
+          }
+        }
+
+        socket.join(documentId);
+        console.log(`User ${socket.user.email} joined room ${documentId}`);
+
+        addPresence(documentId, socket.id, {
+          user: {
+            userId,
+            email: socket.user.email,
+            role: doc.user_role,
+          },
+          cursor: null,
+          selectedElementId: null,
+        });
+
+        // Broadcast join to others
+        socket.to(documentId).emit("user.joined", {
+          socketId: socket.id,
+          user: {
+            userId,
+            email: socket.user.email,
+            role: doc.user_role,
+          },
+        });
+
+        // Send current room users back to joining socket
+        const usersInRoom = getRoomUsers(documentId);
+        socket.emit("room.users", usersInRoom);
+      } catch (err) {
+        socket.emit("error-msg", { message: "Payload validation failed." });
       }
-
-      socket.join(documentId);
-      console.log(`User ${socket.user.email} joined room ${documentId}`);
-
-      addPresence(documentId, socket.id, {
-        user: {
-          userId: socket.user.id,
-          email: socket.user.email,
-          role: doc.user_role,
-        },
-        cursor: null,
-        selectedElementId: null,
-      });
-
-      // Broadcast user.joined to other users in the room
-      socket.to(documentId).emit("user.joined", {
-        socketId: socket.id,
-        user: {
-          userId: socket.user.id,
-          email: socket.user.email,
-          role: doc.user_role,
-        },
-      });
-
-      // Send current users in room to the newly joined client
-      const usersInRoom = getRoomUsers(documentId);
-      socket.emit("room.users", usersInRoom);
     });
 
-    socket.on("cursor.move", ({ documentId, x, y }) => {
-      updatePresence(documentId, socket.id, { cursor: { x, y } });
-      socket.to(documentId).emit("cursor.move", {
-        socketId: socket.id,
-        userId: socket.user.id,
-        x,
-        y,
-      });
-    });
+    socket.on("leave-room", (data) => {
+      try {
+        const parsed = JoinRoomSchema.parse(data);
+        const documentId = parsed.documentId;
 
-    socket.on("selection.set", ({ documentId, elementId }) => {
-      updatePresence(documentId, socket.id, { selectedElementId: elementId });
-      socket.to(documentId).emit("selection.set", {
-        socketId: socket.id,
-        userId: socket.user.id,
-        elementId,
-      });
-    });
-
-    socket.on("element.op", ({ documentId, op }) => {
-      const presences = roomPresences.get(documentId);
-      const presence = presences ? presences.get(socket.id) : null;
-      if (!presence || presence.user.role === "viewer") {
-        return;
+        socket.leave(documentId);
+        removePresence(documentId, socket.id);
+        socket.to(documentId).emit("user.left", { socketId: socket.id });
+      } catch (err) {
+        // Ignore invalid schema leave
       }
-      // Re-broadcast operation to all other clients in the document room
-      socket.to(documentId).emit("element.op", op);
+    });
+
+    socket.on("cursor.move", async (data) => {
+      try {
+        const parsed = CursorMoveSchema.parse(data);
+        const { documentId, x, y } = parsed;
+
+        if (!socket.rooms.has(documentId)) return;
+
+        updatePresence(documentId, socket.id, { cursor: { x, y } });
+        socket.to(documentId).emit("cursor.move", {
+          socketId: socket.id,
+          userId,
+          x,
+          y,
+        });
+      } catch (err) {
+        // Ignore
+      }
+    });
+
+    socket.on("selection.set", async (data) => {
+      try {
+        const parsed = SelectionSetSchema.parse(data);
+        const { documentId, elementId } = parsed;
+
+        if (!socket.rooms.has(documentId)) return;
+
+        updatePresence(documentId, socket.id, { selectedElementId: elementId });
+        socket.to(documentId).emit("selection.set", {
+          socketId: socket.id,
+          userId,
+          elementId,
+        });
+      } catch (err) {
+        // Ignore
+      }
+    });
+
+    socket.on("element.op", async (data) => {
+      try {
+        const parsed = ElementOpSchema.parse(data);
+        const { documentId, op, seq } = parsed;
+
+        const doc = await verifyWriteAccess(socket, documentId);
+        if (!doc) return;
+
+        // Re-broadcast mutation operation with sequence/version info
+        socket.to(documentId).emit("element.op", {
+          ...op,
+          seq: seq || doc.version,
+        });
+      } catch (err) {
+        socket.emit("error-msg", { message: "Operation validation failed." });
+      }
     });
 
     socket.on("disconnecting", () => {
-      // Clean up presences for this socket across any joined rooms before they are removed
       const rooms = Array.from(socket.rooms);
       for (const roomId of rooms) {
         if (roomId !== socket.id) {
           removePresence(roomId, socket.id);
           socket.to(roomId).emit("user.left", { socketId: socket.id });
+        }
+      }
+      
+      const socketIds = userSockets.get(userId);
+      if (socketIds) {
+        socketIds.delete(socket.id);
+        if (socketIds.size === 0) {
+          userSockets.delete(userId);
         }
       }
     });
@@ -164,3 +296,5 @@ exports.initSocket = (server) => {
 
   return ioInstance;
 };
+
+exports.revokeSocketAccess = revokeSocketAccess;

@@ -1,16 +1,34 @@
-import { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer, Image as KonvaImage } from "react-konva";
 import SideMenu from "./SideMenu";
 import CodePreviewPanel from "./CodePreviewPanel";
 import { useStore } from "../store/useStore";
 import { updateDocument } from "../api/documents";
 import { generateCodeFromCanvas, refineGeneratedCode } from "../api/ai";
-import { transformCanvasToSchema } from "../lib/transformCanvasToSchema";
-import { refreshSession } from "../api/auth";
-import { io } from "socket.io-client";
+import { initSocket, getSocket, disconnectSocket } from "../lib/socket";
 
-function CanvasImage({ item, onSelect, onDragEnd, onTransformEnd, isLocked, refCallback }) {
-  const [imgNode, setImgNode] = useState(null);
+interface CanvasImageProps {
+  item: any;
+  onSelect: () => void;
+  onDragMove: (e: any) => void;
+  onDragEnd: (e: any) => void;
+  onTransform: (e: any) => void;
+  onTransformEnd: (e: any) => void;
+  isLocked: boolean;
+  refCallback: (node: any) => void;
+}
+
+function CanvasImage({
+  item,
+  onSelect,
+  onDragMove,
+  onDragEnd,
+  onTransform,
+  onTransformEnd,
+  isLocked,
+  refCallback,
+}: CanvasImageProps) {
+  const [imgNode, setImgNode] = useState<HTMLImageElement | null>(null);
 
   useEffect(() => {
     const image = new window.Image();
@@ -23,7 +41,7 @@ function CanvasImage({ item, onSelect, onDragEnd, onTransformEnd, isLocked, refC
   return (
     <KonvaImage
       ref={refCallback}
-      image={imgNode}
+      image={imgNode || undefined}
       x={item.x}
       y={item.y}
       width={item.width || 200}
@@ -32,7 +50,9 @@ function CanvasImage({ item, onSelect, onDragEnd, onTransformEnd, isLocked, refC
       draggable={!isLocked}
       onClick={onSelect}
       onTap={onSelect}
+      onDragMove={onDragMove}
       onDragEnd={onDragEnd}
+      onTransform={onTransform}
       onTransformEnd={onTransformEnd}
     />
   );
@@ -44,36 +64,36 @@ const SCALE_STEP = 1.12;
 const MIN_BOARD_WIDTH = 600;
 const MIN_BOARD_HEIGHT = 400;
 
-function clamp(value, min, max) {
+function clamp(value: number, min: number, max: number) {
   return Math.max(min, Math.min(max, value));
 }
 
-function getDistance(touch1, touch2) {
+function getDistance(touch1: Touch, touch2: Touch) {
   return Math.hypot(
     touch2.clientX - touch1.clientX,
     touch2.clientY - touch1.clientY
   );
 }
 
-function getCenter(touch1, touch2) {
+function getCenter(touch1: Touch, touch2: Touch) {
   return {
     x: (touch1.clientX + touch2.clientX) / 2,
     y: (touch1.clientY + touch2.clientY) / 2,
   };
 }
 
-const strokeConfig = {
+const strokeConfig: Record<string, { strokeWidth: number; lineCap: "round" | "butt" | "square"; stroke: string }> = {
   Pen: { strokeWidth: 2, lineCap: "round", stroke: "#0f172a" },
   Pencil: { strokeWidth: 1.5, lineCap: "round", stroke: "#334155" },
   Brush: { strokeWidth: 6, lineCap: "round", stroke: "#1d4ed8" },
   Line: { strokeWidth: 3, lineCap: "round", stroke: "#2563eb" },
 };
 
-function CanvasBase() {
-  const boardRef = useRef(null);
-  const stageRef = useRef(null);
-  const transformerRef = useRef(null);
-  const objectRefs = useRef({});
+export default function CanvasBase() {
+  const boardRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<any>(null);
+  const transformerRef = useRef<any>(null);
+  const objectRefs = useRef<Record<string, any>>({});
   const lastPinchDistanceRef = useRef(0);
 
   const [menuCollapsed, setMenuCollapsed] = useState(false);
@@ -81,54 +101,55 @@ function CanvasBase() {
   const [scale, setScale] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
 
-  const boardWidth = useStore((state) => state.boardWidth);
-  const boardHeight = useStore((state) => state.boardHeight);
-  const boardColor = useStore((state) => state.backgroundColor);
-  const elements = useStore((state) => state.elements);
-  const selectedElementId = useStore((state) => state.selectedElementId);
+  const boardWidth = useStore((state: any) => state.boardWidth);
+  const boardHeight = useStore((state: any) => state.boardHeight);
+  const boardColor = useStore((state: any) => state.backgroundColor);
+  const elements = useStore((state: any) => state.elements);
+  const selectedElementId = useStore((state: any) => state.selectedElementId);
 
-  const activeTool = useStore((state) => state.activeTool);
-  const selectedStroke = useStore((state) => state.selectedStroke);
-  const isDrawing = useStore((state) => state.isDrawing);
-  const draftElement = useStore((state) => state.draftElement);
+  const activeTool = useStore((state: any) => state.activeTool);
+  const selectedStroke = useStore((state: any) => state.selectedStroke);
+  const isDrawing = useStore((state: any) => state.isDrawing);
+  const draftElement = useStore((state: any) => state.draftElement);
 
-  const addElement = useStore((state) => state.addElement);
-  const updateElement = useStore((state) => state.updateElement);
-  const deleteElement = useStore((state) => state.deleteElement);
-  const selectElement = useStore((state) => state.selectElement);
-  const setActiveTool = useStore((state) => state.setActiveTool);
-  const setSelectedStroke = useStore((state) => state.setSelectedStroke);
-  const setIsDrawing = useStore((state) => state.setIsDrawing);
-  const setDraftElement = useStore((state) => state.setDraftElement);
-  const setBackgroundColor = useStore((state) => state.setBackgroundColor);
-  const setBoardWidth = useStore((state) => state.setBoardWidth);
-  const setBoardHeight = useStore((state) => state.setBoardHeight);
+  const addElement = useStore((state: any) => state.addElement);
+  const updateElement = useStore((state: any) => state.updateElement);
+  const deleteElement = useStore((state: any) => state.deleteElement);
+  const selectElement = useStore((state: any) => state.selectElement);
+  const setActiveTool = useStore((state: any) => state.setActiveTool);
+  const setSelectedStroke = useStore((state: any) => state.setSelectedStroke);
+  const setIsDrawing = useStore((state: any) => state.setIsDrawing);
+  const setDraftElement = useStore((state: any) => state.setDraftElement);
+  const setBackgroundColor = useStore((state: any) => state.setBackgroundColor);
+  const setBoardWidth = useStore((state: any) => state.setBoardWidth);
+  const setBoardHeight = useStore((state: any) => state.setBoardHeight);
+  const showToast = useStore((state: any) => state.showToast);
 
-  const documentId = useStore((state) => state.documentId);
-  const documentName = useStore((state) => state.documentName);
-  const serializeDocument = useStore((state) => state.serializeDocument);
-  const documentVersion = useStore((state) => state.documentVersion);
-  const isDirty = useStore((state) => state.isDirty);
-  const saveStatus = useStore((state) => state.saveStatus);
-  const setSaveStatus = useStore((state) => state.setSaveStatus);
-  const user = useStore((state) => state.user);
-  const setUser = useStore((state) => state.setUser);
-  const setAccessToken = useStore((state) => state.setAccessToken);
-  const setAuthReady = useStore((state) => state.setAuthReady);
-  const accessToken = useStore((state) => state.accessToken);
-  const userRole = useStore((state) => state.userRole);
+  const documentId = useStore((state: any) => state.documentId);
+  const documentName = useStore((state: any) => state.documentName);
+  const serializeDocument = useStore((state: any) => state.serializeDocument);
+  const documentVersion = useStore((state: any) => state.documentVersion);
+  const isDirty = useStore((state: any) => state.isDirty);
+  const saveStatus = useStore((state: any) => state.saveStatus);
+  const setSaveStatus = useStore((state: any) => state.setSaveStatus);
+  const user = useStore((state: any) => state.user);
+  const setUser = useStore((state: any) => state.setUser);
+  const setAccessToken = useStore((state: any) => state.setAccessToken);
+  const setAuthReady = useStore((state: any) => state.setAuthReady);
+  const accessToken = useStore((state: any) => state.accessToken);
+  const userRole = useStore((state: any) => state.userRole);
 
-  const socketRef = useRef(null);
-  const [collaborators, setCollaborators] = useState([]);
+  const [collaborators, setCollaborators] = useState<any[]>([]);
   const lastCursorEmitRef = useRef(0);
 
   // ── Design-to-Code state ──────────────────────────────────────────────
   const [codePreviewOpen, setCodePreviewOpen] = useState(false);
   const [codeGenLoading, setCodeGenLoading] = useState(false);
-  const [codeGenResult, setCodeGenResult] = useState(null);
-  const [codeGenError, setCodeGenError] = useState(null);
+  const [codeGenResult, setCodeGenResult] = useState<any>(null);
+  const [proposedRefinedResult, setProposedRefinedResult] = useState<any>(null);
+  const [codeGenError, setCodeGenError] = useState<string | null>(null);
   const [isSchemaInspectorOpen, setIsSchemaInspectorOpen] = useState(false);
-  const [localSchema, setLocalSchema] = useState(null);
+  const [localSchema, setLocalSchema] = useState<any>(null);
 
   const handleGenerateCode = useCallback(async () => {
     if (elements.length === 0) {
@@ -138,6 +159,7 @@ function CanvasBase() {
     }
     setCodeGenError(null);
     setCodeGenResult(null);
+    setProposedRefinedResult(null);
     setCodeGenLoading(true);
     setCodePreviewOpen(true);
     try {
@@ -151,20 +173,19 @@ function CanvasBase() {
       };
       const result = await generateCodeFromCanvas(payload);
       setCodeGenResult(result);
-    } catch (err) {
+    } catch (err: any) {
       setCodeGenError(err.message || "Code generation failed. Please try again.");
     } finally {
       setCodeGenLoading(false);
     }
   }, [elements, boardWidth, boardHeight, boardColor]);
 
-  const handleRefineCode = useCallback(async (instruction) => {
+  const handleRefineCode = useCallback(async (instruction: string) => {
     if (!codeGenResult || !codeGenResult.pipeline?.normalizedSchema) {
       setCodeGenError("No active UI schema to refine. Generate code first.");
       return;
     }
     setCodeGenError(null);
-    setCodeGenResult(null); // Clear previous files to show transition/loading
     setCodeGenLoading(true);
     try {
       const payload = {
@@ -175,27 +196,60 @@ function CanvasBase() {
       };
       const response = await refineGeneratedCode(payload);
       if (response.success && response.generated) {
-        // Keep the same pipeline tokens/schema but update the generated code
-        setCodeGenResult((prev) => ({
-          ...prev,
-          generated: response.generated,
-        }));
+        setProposedRefinedResult(response.generated);
       } else {
         throw new Error("Invalid response received from code refinement.");
       }
-    } catch (err) {
+    } catch (err: any) {
       setCodeGenError(err.message || "Code refinement failed. Please try again.");
     } finally {
       setCodeGenLoading(false);
     }
   }, [codeGenResult]);
 
+  const handleAcceptRefinement = useCallback(() => {
+    if (proposedRefinedResult) {
+      setCodeGenResult((prev: any) => ({
+        ...prev,
+        generated: proposedRefinedResult,
+      }));
+      setProposedRefinedResult(null);
+      showToast("Refinement changes applied successfully.", "success");
+    }
+  }, [proposedRefinedResult, showToast]);
+
+  const handleRejectRefinement = useCallback(() => {
+    setProposedRefinedResult(null);
+    showToast("Refinement changes discarded.", "info");
+  }, [showToast]);
+
   const handleInspectSchema = useCallback(() => {
     const doc = serializeDocument();
-    const schema = transformCanvasToSchema(doc);
-    setLocalSchema(schema);
-    setIsSchemaInspectorOpen(true);
-  }, [serializeDocument]);
+    
+    // Spawn Web Worker dynamically to keep main-thread responsive
+    const worker = new Worker(
+      new URL("../workers/schema.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+    
+    worker.postMessage({ doc });
+    
+    worker.onmessage = (e) => {
+      const { success, schema, error } = e.data;
+      if (success) {
+        setLocalSchema(schema);
+        setIsSchemaInspectorOpen(true);
+      } else {
+        showToast("Schema extraction failed: " + error, "error");
+      }
+      worker.terminate();
+    };
+
+    worker.onerror = (err) => {
+      showToast("Worker calculation error", "error");
+      worker.terminate();
+    };
+  }, [serializeDocument, showToast]);
 
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
@@ -203,12 +257,12 @@ function CanvasBase() {
 
   // Track spacebar keypresses globally for canvas panning
   useEffect(() => {
-    const handleKeyDownGlobal = (e) => {
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
       const isInput = activeEl && (
         activeEl.tagName === "INPUT" || 
         activeEl.tagName === "TEXTAREA" || 
-        activeEl.isContentEditable
+        (activeEl as HTMLElement).isContentEditable
       );
       if (isInput) return;
 
@@ -218,7 +272,7 @@ function CanvasBase() {
       }
     };
 
-    const handleKeyUpGlobal = (e) => {
+    const handleKeyUpGlobal = (e: KeyboardEvent) => {
       if (e.key === " ") {
         setSpacePressed(false);
       }
@@ -232,56 +286,30 @@ function CanvasBase() {
     };
   }, []);
 
-  // Restore active session on mount
-  useEffect(() => {
-    const restoreSession = async () => {
-      try {
-        const data = await refreshSession();
-        setUser(data.user);
-        setAccessToken(data.accessToken);
-      } catch (err) {
-        console.log("No active session to restore.", err);
-      } finally {
-        setAuthReady(true);
-      }
-    };
-    restoreSession();
-  }, [setUser, setAccessToken, setAuthReady]);
-
   // Socket.IO Room Connection and Events synchronization
   useEffect(() => {
     if (!documentId || !accessToken) {
-      const timer = setTimeout(() => {
-        setCollaborators([]);
-      }, 0);
-      return () => clearTimeout(timer);
+      setCollaborators([]);
+      disconnectSocket();
+      return;
     }
 
-    const socket = io("http://localhost:4000", {
-      auth: { token: accessToken },
-    });
-    socketRef.current = socket;
-    useStore.setState({ socket: socket });
+    const socket = initSocket(accessToken);
 
     socket.on("connect", () => {
-      console.log("Socket connected, joining room:", documentId);
       socket.emit("join-room", { documentId });
     });
 
-    socket.on("connect_error", (err) => {
-      console.error("Socket connection error:", err.message);
+    socket.on("error-msg", (data: any) => {
+      showToast(data.message, "error");
     });
 
-    socket.on("error-msg", (data) => {
-      alert(data.message);
-    });
-
-    socket.on("room.users", (users) => {
+    socket.on("room.users", (users: any[]) => {
       const others = users.filter((u) => u.socketId !== socket.id);
       setCollaborators(others);
     });
 
-    socket.on("user.joined", ({ socketId, user: joinedUser }) => {
+    socket.on("user.joined", ({ socketId, user: joinedUser }: any) => {
       setCollaborators((prev) => {
         const exists = prev.some((u) => u.socketId === socketId);
         if (exists) return prev;
@@ -289,23 +317,23 @@ function CanvasBase() {
       });
     });
 
-    socket.on("user.left", ({ socketId }) => {
+    socket.on("user.left", ({ socketId }: any) => {
       setCollaborators((prev) => prev.filter((u) => u.socketId !== socketId));
     });
 
-    socket.on("cursor.move", ({ socketId, x, y }) => {
+    socket.on("cursor.move", ({ socketId, x, y }: any) => {
       setCollaborators((prev) =>
         prev.map((u) => (u.socketId === socketId ? { ...u, cursor: { x, y } } : u))
       );
     });
 
-    socket.on("selection.set", ({ socketId, elementId }) => {
+    socket.on("selection.set", ({ socketId, elementId }: any) => {
       setCollaborators((prev) =>
         prev.map((u) => (u.socketId === socketId ? { ...u, selectedElementId: elementId } : u))
       );
     });
 
-    socket.on("element.op", (op) => {
+    socket.on("element.op", (op: any) => {
       const { type, payload } = op;
       if (type === "element.add") {
         useStore.getState().remoteAddElement(payload);
@@ -324,25 +352,25 @@ function CanvasBase() {
     });
 
     return () => {
-      socket.disconnect();
-      socketRef.current = null;
-      useStore.setState({ socket: null });
+      disconnectSocket();
     };
-  }, [documentId, accessToken]);
+  }, [documentId, accessToken, showToast]);
 
   // Emit selection set on active element changes
   useEffect(() => {
-    if (socketRef.current && socketRef.current.connected && documentId) {
-      socketRef.current.emit("selection.set", { documentId, elementId: selectedElementId });
+    const socket = getSocket();
+    if (socket && socket.connected && documentId) {
+      socket.emit("selection.set", { documentId, elementId: selectedElementId });
     }
   }, [selectedElementId, documentId]);
 
   // Throttled cursor emission
-  const emitCursorMove = (x, y) => {
+  const emitCursorMove = (x: number, y: number) => {
     const now = Date.now();
     if (now - lastCursorEmitRef.current > 50) {
-      if (socketRef.current && socketRef.current.connected) {
-        socketRef.current.emit("cursor.move", { documentId, x, y });
+      const socket = getSocket();
+      if (socket && socket.connected) {
+        socket.emit("cursor.move", { documentId, x, y });
       }
       lastCursorEmitRef.current = now;
     }
@@ -359,7 +387,7 @@ function CanvasBase() {
           name: documentName,
           data: serializeDocument(),
           version: documentVersion,
-          manual: false, // autosave
+          manual: false,
         };
         const updatedDoc = await updateDocument(documentId, payload);
         useStore.setState({
@@ -368,13 +396,14 @@ function CanvasBase() {
           documentVersion: updatedDoc.version,
           saveError: null,
         });
-      } catch (e) {
+      } catch (e: any) {
         console.error("Autosave failed:", e);
-        if (e.message === "conflict") {
+        if (e.status === 409 || e.message === "conflict") {
           useStore.setState({
             saveStatus: "conflict",
             saveError: "Version conflict: This design has been updated elsewhere. Please reload or duplicate.",
           });
+          showToast("Autosave Conflict: This file was edited elsewhere. Save failed.", "error");
         } else {
           useStore.setState({
             saveStatus: "error",
@@ -397,6 +426,7 @@ function CanvasBase() {
     documentVersion,
     serializeDocument,
     setSaveStatus,
+    showToast,
   ]);
 
   // Set up resize observer to keep canvas responsive
@@ -404,11 +434,13 @@ function CanvasBase() {
     if (!boardRef.current) return;
 
     const updateSize = () => {
-      const { clientWidth, clientHeight } = boardRef.current;
-      setStageSize({
-        width: clientWidth,
-        height: clientHeight,
-      });
+      if (boardRef.current) {
+        const { clientWidth, clientHeight } = boardRef.current;
+        setStageSize({
+          width: clientWidth,
+          height: clientHeight,
+        });
+      }
     };
 
     updateSize();
@@ -445,12 +477,12 @@ function CanvasBase() {
 
   // Keyboard shortcuts for Undo/Redo and Delete Selected
   useEffect(() => {
-    const handleKeyDown = (e) => {
+    const handleKeyDown = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
       const isInput = activeEl && (
         activeEl.tagName === "INPUT" || 
         activeEl.tagName === "TEXTAREA" || 
-        activeEl.isContentEditable
+        (activeEl as HTMLElement).isContentEditable
       );
 
       if (isInput) return;
@@ -463,16 +495,18 @@ function CanvasBase() {
         if (userRole === "viewer") return;
         if (e.shiftKey) {
           useStore.getState().redo();
-          if (socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit("element.op", {
+          const socket = getSocket();
+          if (socket && socket.connected) {
+            socket.emit("element.op", {
               documentId,
               op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
             });
           }
         } else {
           useStore.getState().undo();
-          if (socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit("element.op", {
+          const socket = getSocket();
+          if (socket && socket.connected) {
+            socket.emit("element.op", {
               documentId,
               op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
             });
@@ -482,8 +516,9 @@ function CanvasBase() {
         e.preventDefault();
         if (userRole === "viewer") return;
         useStore.getState().redo();
-        if (socketRef.current && socketRef.current.connected) {
-          socketRef.current.emit("element.op", {
+        const socket = getSocket();
+        if (socket && socket.connected) {
+          socket.emit("element.op", {
             documentId,
             op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
           });
@@ -546,6 +581,7 @@ function CanvasBase() {
       link.click();
       document.body.removeChild(link);
       if (originalSelected) selectElement(originalSelected);
+      showToast("Design exported as PNG.", "success");
     }, 100);
   };
 
@@ -565,40 +601,42 @@ function CanvasBase() {
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    showToast("Design exported as JSON.", "success");
   };
 
-  const handleImportJSON = (e) => {
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
     reader.onload = (event) => {
       try {
-        const parsed = JSON.parse(event.target.result);
+        const parsed = JSON.parse(event.target?.result as string);
         if (!parsed || !parsed.data || !Array.isArray(parsed.data.elements)) {
-          alert("Invalid JSON format. Make sure it is a valid whiteboard design file.");
+          showToast("Invalid JSON format. Make sure it is a valid whiteboard design file.", "error");
           return;
         }
 
         if (documentId) {
           useStore.setState({
             documentName: parsed.name || documentName,
-            boardWidth: parsed.data.boardWidth || boardWidth,
-            boardHeight: parsed.data.boardHeight || boardHeight,
-            backgroundColor: parsed.data.backgroundColor || boardColor,
+            boardWidth: parsed.data.board?.width || parsed.data.boardWidth || boardWidth,
+            boardHeight: parsed.data.board?.height || parsed.data.boardHeight || boardHeight,
+            backgroundColor: parsed.data.board?.background || parsed.data.backgroundColor || boardColor,
             elements: parsed.data.elements,
             isDirty: true,
             saveStatus: "idle",
           });
-          if (socketRef.current && socketRef.current.connected) {
-            socketRef.current.emit("element.op", {
+          const socket = getSocket();
+          if (socket && socket.connected) {
+            socket.emit("element.op", {
               documentId,
               op: {
                 type: "canvas.update",
                 payload: {
-                  boardWidth: parsed.data.boardWidth || boardWidth,
-                  boardHeight: parsed.data.boardHeight || boardHeight,
-                  backgroundColor: parsed.data.backgroundColor || boardColor,
+                  boardWidth: parsed.data.board?.width || parsed.data.boardWidth || boardWidth,
+                  boardHeight: parsed.data.board?.height || parsed.data.boardHeight || boardHeight,
+                  backgroundColor: parsed.data.board?.background || parsed.data.backgroundColor || boardColor,
                   elements: parsed.data.elements,
                 },
               },
@@ -607,21 +645,22 @@ function CanvasBase() {
         } else {
           useStore.setState({
             documentName: parsed.name || "Imported Design",
-            boardWidth: parsed.data.boardWidth || boardWidth,
-            boardHeight: parsed.data.boardHeight || boardHeight,
-            backgroundColor: parsed.data.backgroundColor || boardColor,
+            boardWidth: parsed.data.board?.width || parsed.data.boardWidth || boardWidth,
+            boardHeight: parsed.data.board?.height || parsed.data.boardHeight || boardHeight,
+            backgroundColor: parsed.data.board?.background || parsed.data.backgroundColor || boardColor,
             elements: parsed.data.elements,
             isDirty: false,
           });
         }
-      } catch (err) {
-        alert("Failed to parse JSON file: " + err.message);
+        showToast("Design imported successfully.", "success");
+      } catch (err: any) {
+        showToast("Failed to parse JSON file: " + err.message, "error");
       }
     };
     reader.readAsText(file);
   };
 
-  const zoomAtPoint = (pointer, nextScale) => {
+  const zoomAtPoint = (pointer: { x: number; y: number }, nextScale: number) => {
     const oldScale = scale;
     const pointTo = {
       x: (pointer.x - position.x) / oldScale,
@@ -637,7 +676,7 @@ function CanvasBase() {
     setPosition(newPosition);
   };
 
-  const handleWheel = (e) => {
+  const handleWheel = (e: any) => {
     e.evt.preventDefault();
     const stage = stageRef.current;
     const pointer = stage?.getPointerPosition();
@@ -651,7 +690,7 @@ function CanvasBase() {
     zoomAtPoint(pointer, nextScale);
   };
 
-  const handleTouchMove = (e) => {
+  const handleTouchMove = (e: any) => {
     const touch1 = e.evt.touches[0];
     const touch2 = e.evt.touches[1];
     if (!touch1 || !touch2) return;
@@ -691,8 +730,8 @@ function CanvasBase() {
     zoomAtPoint(centerPoint, nextScale);
   };
 
-  const addShape = (shapeType) => {
-    let newElement = {
+  const addShape = (shapeType: string) => {
+    let newElement: any = {
       id: `element-${Date.now()}`,
       visible: true,
       locked: false,
@@ -700,13 +739,13 @@ function CanvasBase() {
       fill: "#2563eb",
       stroke: "#1d4ed8",
       strokeWidth: 3,
+      name: shapeType,
     };
 
     if (shapeType === "Circle") {
       newElement = {
         ...newElement,
         type: "circle",
-        name: "Circle",
         x: boardWidth / 2,
         y: boardHeight / 2,
         radius: 60,
@@ -715,7 +754,6 @@ function CanvasBase() {
       newElement = {
         ...newElement,
         type: "rect",
-        name: "Square",
         x: boardWidth / 2 - 60,
         y: boardHeight / 2 - 60,
         width: 120,
@@ -725,7 +763,6 @@ function CanvasBase() {
       newElement = {
         ...newElement,
         type: "rect",
-        name: "Rectangle",
         x: boardWidth / 2 - 80,
         y: boardHeight / 2 - 50,
         width: 160,
@@ -735,7 +772,6 @@ function CanvasBase() {
       newElement = {
         ...newElement,
         type: "triangle",
-        name: "Triangle",
         x: boardWidth / 2,
         y: boardHeight / 2,
         radius: 60,
@@ -744,7 +780,6 @@ function CanvasBase() {
       newElement = {
         ...newElement,
         type: "diamond",
-        name: "Diamond",
         x: boardWidth / 2,
         y: boardHeight / 2,
         radius: 60,
@@ -753,7 +788,6 @@ function CanvasBase() {
       newElement = {
         ...newElement,
         type: "line",
-        name: "Line",
         x: boardWidth / 2 - 80,
         y: boardHeight / 2 - 5,
         width: 160,
@@ -769,7 +803,7 @@ function CanvasBase() {
     selectElement(newElement.id);
   };
 
-  const addText = (text) => {
+  const addText = (text: string) => {
     const newElement = {
       id: `element-${Date.now()}`,
       type: "text",
@@ -788,29 +822,25 @@ function CanvasBase() {
     selectElement(newElement.id);
   };
 
-  const changeBackground = (color) => {
+  const changeBackground = (color: string) => {
     setBackgroundColor(color);
   };
 
-  const updateBoardWidth = (value) => {
+  const updateBoardWidth = (value: number) => {
     const nextWidth = clamp(value || MIN_BOARD_WIDTH, MIN_BOARD_WIDTH, 5000);
     setBoardWidth(nextWidth);
   };
 
-  const updateBoardHeight = (value) => {
+  const updateBoardHeight = (value: number) => {
     const nextHeight = clamp(value || MIN_BOARD_HEIGHT, MIN_BOARD_HEIGHT, 5000);
     setBoardHeight(nextHeight);
   };
 
-  const updateItem = (id, patch) => {
-    updateElement(id, patch);
-  };
-
-  const handleShapeClick = (id) => {
+  const handleShapeClick = (id: string) => {
     selectElement(id);
   };
 
-  const handleStageMouseDown = (e) => {
+  const handleStageMouseDown = (e: any) => {
     if (userRole === "viewer") return;
     const stage = e.target.getStage();
     if (activeTool === "Stroke") {
@@ -836,7 +866,7 @@ function CanvasBase() {
     }
   };
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = (e: any) => {
     const stage = e.target.getStage();
     const pointer = stage?.getPointerPosition();
     if (pointer) {
@@ -867,7 +897,7 @@ function CanvasBase() {
     handleMouseUp();
   };
 
-  const renderRectangle = (item) => {
+  const renderRectangle = (item: any) => {
     const commonProps = {
       x: item.x,
       y: item.y,
@@ -878,23 +908,36 @@ function CanvasBase() {
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
       draggable: !item.locked && userRole !== "viewer",
-      onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
-      ref: (node) => {
+      ref: (node: any) => {
         if (node) objectRefs.current[item.id] = node;
       },
-      onTransformEnd: (e) => {
+      onTransform: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
         const scaleY = node.scaleY();
-        updateItem(item.id, {
-          x: node.x(),
-          y: node.y(),
-          width: Math.max(30, item.width * scaleX),
-          height: Math.max(30, item.height * scaleY),
-          rotation: node.rotation(),
-        });
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(Math.max(30, item.width * scaleX)),
+          height: Math.round(Math.max(30, item.height * scaleY)),
+          rotation: Math.round(node.rotation()),
+        }, false);
+      },
+      onTransformEnd: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        const scaleY = node.scaleY();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(Math.max(30, item.width * scaleX)),
+          height: Math.round(Math.max(30, item.height * scaleY)),
+          rotation: Math.round(node.rotation()),
+        }, true);
         node.scaleX(1);
         node.scaleY(1);
       },
@@ -902,7 +945,7 @@ function CanvasBase() {
     return <Rect key={item.id} {...commonProps} />;
   };
 
-  const renderCircle = (item) => {
+  const renderCircle = (item: any) => {
     const commonProps = {
       x: item.x,
       y: item.y,
@@ -912,21 +955,32 @@ function CanvasBase() {
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
       draggable: !item.locked && userRole !== "viewer",
-      onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
-      ref: (node) => {
+      ref: (node: any) => {
         if (node) objectRefs.current[item.id] = node;
       },
-      onTransformEnd: (e) => {
+      onTransform: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
-        updateItem(item.id, {
-          x: node.x(),
-          y: node.y(),
-          radius: Math.max(10, item.radius * scaleX),
-          rotation: node.rotation(),
-        });
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          radius: Math.round(Math.max(10, item.radius * scaleX)),
+          rotation: Math.round(node.rotation()),
+        }, false);
+      },
+      onTransformEnd: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          radius: Math.round(Math.max(10, item.radius * scaleX)),
+          rotation: Math.round(node.rotation()),
+        }, true);
         node.scaleX(1);
         node.scaleY(1);
       },
@@ -934,7 +988,7 @@ function CanvasBase() {
     return <Circle key={item.id} {...commonProps} />;
   };
 
-  const renderTriangle = (item) => {
+  const renderTriangle = (item: any) => {
     const commonProps = {
       x: item.x,
       y: item.y,
@@ -945,21 +999,32 @@ function CanvasBase() {
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
       draggable: !item.locked && userRole !== "viewer",
-      onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
-      ref: (node) => {
+      ref: (node: any) => {
         if (node) objectRefs.current[item.id] = node;
       },
-      onTransformEnd: (e) => {
+      onTransform: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
-        updateItem(item.id, {
-          x: node.x(),
-          y: node.y(),
-          radius: Math.max(10, item.radius * scaleX),
-          rotation: node.rotation(),
-        });
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          radius: Math.round(Math.max(10, item.radius * scaleX)),
+          rotation: Math.round(node.rotation()),
+        }, false);
+      },
+      onTransformEnd: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          radius: Math.round(Math.max(10, item.radius * scaleX)),
+          rotation: Math.round(node.rotation()),
+        }, true);
         node.scaleX(1);
         node.scaleY(1);
       },
@@ -967,7 +1032,7 @@ function CanvasBase() {
     return <RegularPolygon key={item.id} {...commonProps} />;
   };
 
-  const renderDiamond = (item) => {
+  const renderDiamond = (item: any) => {
     const commonProps = {
       x: item.x,
       y: item.y,
@@ -978,21 +1043,32 @@ function CanvasBase() {
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
       draggable: !item.locked && userRole !== "viewer",
-      onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
-      ref: (node) => {
+      ref: (node: any) => {
         if (node) objectRefs.current[item.id] = node;
       },
-      onTransformEnd: (e) => {
+      onTransform: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
-        updateItem(item.id, {
-          x: node.x(),
-          y: node.y(),
-          radius: Math.max(10, item.radius * scaleX),
-          rotation: node.rotation(),
-        });
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          radius: Math.round(Math.max(10, item.radius * scaleX)),
+          rotation: Math.round(node.rotation()),
+        }, false);
+      },
+      onTransformEnd: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          radius: Math.round(Math.max(10, item.radius * scaleX)),
+          rotation: Math.round(node.rotation()),
+        }, true);
         node.scaleX(1);
         node.scaleY(1);
       },
@@ -1000,7 +1076,7 @@ function CanvasBase() {
     return <RegularPolygon key={item.id} {...commonProps} />;
   };
 
-  const renderLine = (item) => {
+  const renderLine = (item: any) => {
     const commonProps = {
       x: item.x,
       y: item.y,
@@ -1011,23 +1087,36 @@ function CanvasBase() {
       stroke: item.stroke,
       strokeWidth: 0,
       draggable: !item.locked && userRole !== "viewer",
-      onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
       onClick: () => handleShapeClick(item.id),
       onTap: () => handleShapeClick(item.id),
-      ref: (node) => {
+      ref: (node: any) => {
         if (node) objectRefs.current[item.id] = node;
       },
-      onTransformEnd: (e) => {
+      onTransform: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
         const scaleY = node.scaleY();
-        updateItem(item.id, {
-          x: node.x(),
-          y: node.y(),
-          width: Math.max(10, item.width * scaleX),
-          height: Math.max(2, item.height * scaleY),
-          rotation: node.rotation(),
-        });
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(Math.max(10, item.width * scaleX)),
+          height: Math.round(Math.max(2, item.height * scaleY)),
+          rotation: Math.round(node.rotation()),
+        }, false);
+      },
+      onTransformEnd: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        const scaleY = node.scaleY();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(Math.max(10, item.width * scaleX)),
+          height: Math.round(Math.max(2, item.height * scaleY)),
+          rotation: Math.round(node.rotation()),
+        }, true);
         node.scaleX(1);
         node.scaleY(1);
       },
@@ -1035,7 +1124,7 @@ function CanvasBase() {
     return <Rect key={item.id} {...commonProps} />;
   };
 
-  const renderTextItem = (item) => (
+  const renderTextItem = (item: any) => (
     <Text
       key={item.id}
       x={item.x}
@@ -1043,38 +1132,50 @@ function CanvasBase() {
       text={item.text}
       width={item.width}
       fontSize={item.fontSize}
-      fill={item.fill}
+      fill={item.fill || "#000"}
       draggable={!item.locked && userRole !== "viewer"}
-      onDragEnd={(e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() })}
+      onDragMove={(e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false)}
+      onDragEnd={(e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true)}
       onClick={() => handleShapeClick(item.id)}
       onTap={() => handleShapeClick(item.id)}
       onDblClick={() => {
         const newText = window.prompt("Edit text", item.text);
         if (newText !== null) {
-          updateItem(item.id, { text: newText });
+          updateElement(item.id, { text: newText }, true);
         }
       }}
-      ref={(node) => {
+      ref={(node: any) => {
         if (node) objectRefs.current[item.id] = node;
       }}
-      onTransformEnd={(e) => {
+      onTransform={(e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        const newWidth = Math.max(40, node.width() * scaleX);
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(newWidth),
+          rotation: Math.round(node.rotation()),
+        }, false);
+      }}
+      onTransformEnd={(e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
         const newWidth = Math.max(40, node.width() * scaleX);
         node.scaleX(1);
         node.scaleY(1);
         transformerRef.current?.forceUpdate();
-        updateItem(item.id, {
-          x: node.x(),
-          y: node.y(),
-          width: newWidth,
-          rotation: node.rotation(),
-        });
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(newWidth),
+          rotation: Math.round(node.rotation()),
+        }, true);
       }}
     />
   );
 
-  const renderPathItem = (item) => (
+  const renderPathItem = (item: any) => (
     <Line
       key={item.id}
       points={item.points}
@@ -1086,32 +1187,45 @@ function CanvasBase() {
       globalCompositeOperation="source-over"
       onClick={() => handleShapeClick(item.id)}
       onTap={() => handleShapeClick(item.id)}
-      ref={(node) => {
+      ref={(node: any) => {
         if (node) objectRefs.current[item.id] = node;
       }}
     />
   );
 
-  const renderImageElement = (item) => {
+  const renderImageElement = (item: any) => {
     const commonProps = {
       item,
       isLocked: item.locked || userRole === "viewer",
       onSelect: () => handleShapeClick(item.id),
-      onDragEnd: (e) => updateItem(item.id, { x: e.target.x(), y: e.target.y() }),
-      refCallback: (node) => {
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
+      refCallback: (node: any) => {
         if (node) objectRefs.current[item.id] = node;
       },
-      onTransformEnd: (e) => {
+      onTransform: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
         const scaleY = node.scaleY();
-        updateItem(item.id, {
-          x: node.x(),
-          y: node.y(),
-          width: Math.max(30, (item.width || 200) * scaleX),
-          height: Math.max(30, (item.height || 200) * scaleY),
-          rotation: node.rotation(),
-        });
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(Math.max(30, (item.width || 200) * scaleX)),
+          height: Math.round(Math.max(30, (item.height || 200) * scaleY)),
+          rotation: Math.round(node.rotation()),
+        }, false);
+      },
+      onTransformEnd: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        const scaleY = node.scaleY();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          width: Math.round(Math.max(30, (item.width || 200) * scaleX)),
+          height: Math.round(Math.max(30, (item.height || 200) * scaleY)),
+          rotation: Math.round(node.rotation()),
+        }, true);
         node.scaleX(1);
         node.scaleY(1);
       },
@@ -1119,7 +1233,7 @@ function CanvasBase() {
     return <CanvasImage key={item.id} {...commonProps} />;
   };
 
-  const renderItem = (item) => {
+  const renderItem = (item: any) => {
     if (!item.visible) return null;
     switch (item.type) {
       case "rect":
@@ -1144,7 +1258,7 @@ function CanvasBase() {
     }
   };
 
-  const selectedItem = elements.find((item) => item.id === selectedElementId) || null;
+  const selectedItem = elements.find((item: any) => item.id === selectedElementId) || null;
 
   return (
     <section className="canvas-base">
@@ -1174,7 +1288,7 @@ function CanvasBase() {
           }}
           onChangeSelectedColor={(color) => {
             if (!selectedElementId) return;
-            updateItem(selectedElementId, { fill: color, stroke: color });
+            updateElement(selectedElementId, { fill: color, stroke: color }, true);
           }}
           onExportPNG={exportToPNG}
           onExportJSON={exportToJSON}
@@ -1186,10 +1300,13 @@ function CanvasBase() {
           isOpen={codePreviewOpen}
           onClose={() => setCodePreviewOpen(false)}
           result={codeGenResult}
+          proposedRefinedResult={proposedRefinedResult}
           isLoading={codeGenLoading}
           error={codeGenError}
           onRefine={handleRefineCode}
           onRegenerate={handleGenerateCode}
+          onAcceptRefinement={handleAcceptRefinement}
+          onRejectRefinement={handleRejectRefinement}
         />
 
         <div ref={boardRef} className="canvas-base__board">
@@ -1414,7 +1531,7 @@ function CanvasBase() {
               onWheel={handleWheel}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleStageTouchEnd}
-              onMouseDown={(e) => {
+              onMouseDown={(e: any) => {
                 if (e.evt.button === 1) {
                   e.evt.preventDefault();
                   setMiddleMouseDown(true);
@@ -1425,12 +1542,12 @@ function CanvasBase() {
               onTouchStart={handleStageMouseDown}
               onMouseMove={handleMouseMove}
               onMouseUp={handleMouseUp}
-              onDragMove={(e) => {
+              onDragMove={(e: any) => {
                 if (e.target === stageRef.current) {
                   setPosition({ x: e.target.x(), y: e.target.y() });
                 }
               }}
-              onDragEnd={(e) => {
+              onDragEnd={(e: any) => {
                 if (e.target === stageRef.current) {
                   setPosition({ x: e.target.x(), y: e.target.y() });
                 }
@@ -1451,19 +1568,19 @@ function CanvasBase() {
                   shadowOffset={{ x: 0, y: 16 }}
                   shadowOpacity={0.8}
                 />
-                {elements.map((item) => renderItem(item))}
+                {elements.map((item: any) => renderItem(item))}
                 {draftElement && renderPathItem(draftElement)}
                 {selectedElementId && userRole !== "viewer" && (
                   <Transformer
-                    key={elements.find((el) => el.id === selectedElementId)?.type === "text" ? "text-transformer" : "shape-transformer"}
+                    key={elements.find((el: any) => el.id === selectedElementId)?.type === "text" ? "text-transformer" : "shape-transformer"}
                     ref={transformerRef}
                     rotateEnabled={true}
-                    enabledAnchors={elements.find((el) => el.id === selectedElementId)?.type === "text"
+                    enabledAnchors={elements.find((el: any) => el.id === selectedElementId)?.type === "text"
                       ? ["middle-left", "middle-right"]
                       : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"]
                     }
                     boundBoxFunc={(oldBox, newBox) => {
-                      if (elements.find((el) => el.id === selectedElementId)?.type === "text") {
+                      if (elements.find((el: any) => el.id === selectedElementId)?.type === "text") {
                         newBox.width = Math.max(30, newBox.width);
                       }
                       return newBox;
@@ -1674,5 +1791,3 @@ function CanvasBase() {
     </section>
   );
 }
-
-export default CanvasBase;
