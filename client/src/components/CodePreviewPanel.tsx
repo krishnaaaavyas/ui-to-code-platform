@@ -164,7 +164,7 @@ export default function CodePreviewPanel({
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 bottom-0 w-full max-w-[840px] bg-slate-950 border-l border-slate-800 shadow-2xl z-[1001] flex flex-col transition-transform duration-350 ease-out ${
+        className={`fixed top-0 right-0 bottom-0 w-full max-w-[340px] bg-slate-950 border-l border-slate-800 shadow-2xl z-[1001] flex flex-col transition-transform duration-350 ease-out ${
           isOpen ? "translate-x-0" : "translate-x-full"
         }`}
       >
@@ -529,15 +529,15 @@ export default function CodePreviewPanel({
 
         {/* Empty State */}
         {!isLoading && !error && !result && (
-          <div className="flex-1 flex flex-col items-center justify-center p-12 text-center bg-slate-950">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-500/5 border border-indigo-500/10 flex items-center justify-center mb-4">
-              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.5">
+          <div className="flex-1 flex flex-col items-center justify-center p-6 text-center bg-slate-950">
+            <div className="w-10 h-10 rounded-xl bg-indigo-500/5 border border-indigo-500/10 flex items-center justify-center mb-2">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#6366f1" strokeWidth="1.5">
                 <polyline points="16,18 22,12 16,6" />
                 <polyline points="8,6 2,12 8,18" />
               </svg>
             </div>
-            <h3 className="text-slate-300 font-semibold">No Code Generated Yet</h3>
-            <p className="text-slate-500 text-xs max-w-xs mt-2 leading-relaxed">
+            <h3 className="text-slate-300 font-semibold text-sm">No Code Generated Yet</h3>
+            <p className="text-slate-500 text-xs max-w-[220px] mt-1 leading-relaxed">
               Draw elements on your canvas and click <span className="text-indigo-400 font-semibold">Generate Code</span> to inspect outputs.
             </p>
           </div>
