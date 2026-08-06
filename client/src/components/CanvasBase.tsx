@@ -252,6 +252,17 @@ export default function CanvasBase() {
     };
   }, [serializeDocument, showToast]);
 
+  useEffect(() => {
+    const onGenerate = () => handleGenerateCode();
+    const onInspect = () => handleInspectSchema();
+    window.addEventListener("trigger-generate-code", onGenerate);
+    window.addEventListener("trigger-inspect-schema", onInspect);
+    return () => {
+      window.removeEventListener("trigger-generate-code", onGenerate);
+      window.removeEventListener("trigger-inspect-schema", onInspect);
+    };
+  }, [handleGenerateCode, handleInspectSchema]);
+
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
   const [middleMouseDown, setMiddleMouseDown] = useState(false);
@@ -1311,153 +1322,54 @@ export default function CanvasBase() {
         />
 
         <div ref={boardRef} className="canvas-base__board">
-          {/* Live Collaborators + Generate Code Header */}
-          <div
-            style={{
-              position: "absolute",
-              top: "18px",
-              right: "18px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-              padding: "6px 12px",
-              borderRadius: "14px",
-              background: "rgba(15, 23, 42, 0.45)",
-              backdropFilter: "blur(12px)",
-              border: "1px solid rgba(255, 255, 255, 0.08)",
-              boxShadow: "0 8px 32px rgba(0, 0, 0, 0.25)",
-              zIndex: 100,
-            }}
-          >
-            {/* Generate Code button */}
-            {user && (
-              <button
-                id="generate-code-btn"
-                type="button"
-                onClick={handleGenerateCode}
-                title="Convert this design to React + Tailwind code"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "7px",
-                  padding: "7px 14px",
-                  borderRadius: "10px",
-                  background: codeGenLoading
-                    ? "rgba(99,102,241,0.25)"
-                    : "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                  border: "1px solid rgba(99,102,241,0.4)",
-                  color: "#ffffff",
-                  fontSize: "12px",
-                  fontWeight: "700",
-                  cursor: codeGenLoading ? "not-allowed" : "pointer",
-                  letterSpacing: "0.03em",
-                  boxShadow: codeGenLoading ? "none" : "0 4px 16px rgba(99,102,241,0.35)",
-                  transition: "all 0.2s ease",
-                  opacity: codeGenLoading ? 0.7 : 1,
-                }}
-                disabled={codeGenLoading}
-                onMouseEnter={(e) => {
-                  if (!codeGenLoading) {
-                    e.currentTarget.style.transform = "translateY(-1px)";
-                    e.currentTarget.style.boxShadow = "0 6px 20px rgba(99,102,241,0.45)";
-                  }
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.transform = "";
-                  e.currentTarget.style.boxShadow = codeGenLoading ? "none" : "0 4px 16px rgba(99,102,241,0.35)";
-                }}
-              >
-                {codeGenLoading ? (
-                  <>
-                    <div
-                      style={{
-                        width: "12px",
-                        height: "12px",
-                        borderRadius: "50%",
-                        border: "2px solid rgba(255,255,255,0.3)",
-                        borderTopColor: "#fff",
-                        animation: "spin 0.7s linear infinite",
-                        flexShrink: 0,
-                      }}
-                    />
-                    Generating...
-                  </>
-                ) : (
-                  <>
-                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-                      <polyline points="16,18 22,12 16,6" />
-                      <polyline points="8,6 2,12 8,18" />
-                    </svg>
-                    Generate Code
-                  </>
-                )}
-              </button>
-            )}
-            {/* Inspect UI Schema button */}
-            {user && (
-              <button
-                id="inspect-schema-btn"
-                type="button"
-                onClick={handleInspectSchema}
-                title="Inspect raw frontend-transformed UI Schema"
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "7px",
-                  padding: "7px 14px",
-                  borderRadius: "10px",
-                  background: "rgba(255, 255, 255, 0.05)",
-                  border: "1px solid rgba(255, 255, 255, 0.12)",
-                  color: "#cbd5e1",
-                  fontSize: "12px",
-                  fontWeight: "600",
-                  cursor: "pointer",
-                  letterSpacing: "0.03em",
-                  transition: "all 0.2s ease",
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.1)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.2)";
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.05)";
-                  e.currentTarget.style.borderColor = "rgba(255, 255, 255, 0.12)";
-                }}
-              >
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                </svg>
-                Inspect Schema
-              </button>
-            )}
-            {collaborators.map((u) => {
-              const initial = u.user?.email ? u.user.email.charAt(0).toUpperCase() : "?";
-              const color = u.user?.color || "#3b82f6";
-              return (
-                <div
-                  key={u.socketId}
-                  title={`${u.user?.email || "Anonymous"} (${u.user?.role || "collaborator"})`}
-                  style={{
-                    width: "32px",
-                    height: "32px",
-                    borderRadius: "50%",
-                    backgroundColor: color,
-                    color: "#ffffff",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                    fontSize: "12px",
-                    fontWeight: "700",
-                    border: "2px solid #ffffff",
-                    boxShadow: "0 4px 10px rgba(15, 23, 42, 0.15)",
-                    cursor: "default",
-                  }}
-                >
-                  {initial}
-                </div>
-              );
-            })}
-          </div>
+          {/* Live Collaborators Avatars (Top Right Canvas Overlay) */}
+          {collaborators.length > 0 && (
+            <div
+              style={{
+                position: "absolute",
+                top: "18px",
+                right: "18px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "6px 12px",
+                borderRadius: "14px",
+                background: "var(--surface-elevated)",
+                backdropFilter: "blur(12px)",
+                border: "1px solid var(--border)",
+                boxShadow: "var(--shadow-sm)",
+                zIndex: 100,
+              }}
+            >
+              {collaborators.map((u) => {
+                const initial = u.user?.email ? u.user.email.charAt(0).toUpperCase() : "?";
+                const color = u.user?.color || "#3b82f6";
+                return (
+                  <div
+                    key={u.socketId}
+                    title={`${u.user?.email || "Anonymous"} (${u.user?.role || "collaborator"})`}
+                    style={{
+                      width: "32px",
+                      height: "32px",
+                      borderRadius: "50%",
+                      backgroundColor: color,
+                      color: "#ffffff",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      fontSize: "12px",
+                      fontWeight: "700",
+                      border: "2px solid #ffffff",
+                      boxShadow: "0 4px 10px rgba(15, 23, 42, 0.15)",
+                      cursor: "default",
+                    }}
+                  >
+                    {initial}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
           {/* Collaborator Cursor Overlays */}
           {collaborators.map((u) => {
