@@ -7,19 +7,49 @@
   background-image: radial-gradient(circle at top, rgba(99, 102, 241, 0.12), transparent 45%);
   color: #f8fafc;
 
+  /* Color Palette (Obsidian / Indigo Theme) */
   --bg: #030712;
-  --panel: rgba(17, 24, 39, 0.7);
-  --panel-strong: rgba(17, 24, 39, 0.92);
-  --panel-soft: rgba(255, 255, 255, 0.02);
-  --panel-border: rgba(255, 255, 255, 0.06);
-  --card: rgba(255, 255, 255, 0.04);
-  --text: #f8fafc;
-  --muted: #94a3b8;
+  --surface: rgba(11, 14, 23, 0.85);
+  --surface-elevated: rgba(17, 24, 39, 0.92);
+  --border: rgba(255, 255, 255, 0.08);
+  --text-primary: #f8fafc;
+  --text-muted: #94a3b8;
   --accent: #6366f1;
-  --accent-soft: rgba(99, 102, 241, 0.15);
+  --accent-hover: #4f46e5;
+  --success: #10b981;
+  --warning: #f59e0b;
   --danger: #ef4444;
+
+  /* Backwards Compatibility / UI Utility Variables */
+  --panel: var(--surface);
+  --panel-strong: var(--surface-elevated);
+  --panel-soft: rgba(255, 255, 255, 0.02);
+  --panel-border: var(--border);
+  --card: rgba(255, 255, 255, 0.04);
+  --text: var(--text-primary);
+  --muted: var(--text-muted);
+  --accent-soft: rgba(99, 102, 241, 0.15);
   --sky: #38bdf8;
-  --shadow: 0 20px 40px rgba(0, 0, 0, 0.35);
+
+  /* 4-Step Spacing Scale */
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 16px;
+  --space-4: 24px;
+  --spacing-xs: var(--space-1);
+  --spacing-sm: var(--space-2);
+  --spacing-md: var(--space-3);
+  --spacing-lg: var(--space-4);
+
+  /* 3 Border-Radius Sizes */
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+
+  /* 2 Shadow Presets */
+  --shadow-sm: 0 4px 12px rgba(0, 0, 0, 0.25);
+  --shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.35);
+  --shadow: var(--shadow-lg);
 }
 
 * {
