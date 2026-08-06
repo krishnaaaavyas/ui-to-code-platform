@@ -1,4 +1,21 @@
 import React, { useState, useEffect } from "react";
+import {
+  Circle,
+  Square,
+  Triangle,
+  RectangleHorizontal,
+  Minus,
+  Diamond,
+  Pen,
+  Pencil,
+  Brush,
+  Shapes,
+  Type,
+  Palette,
+  PenTool,
+  Layers,
+  FolderOpen,
+} from "lucide-react";
 import { useStore } from "../store/useStore";
 import {
   createDocument,
@@ -14,28 +31,28 @@ import { listPermissions, shareDocument, removePermission } from "../api/permiss
 import { getPresignedUrl, uploadFileDirectly, registerAsset } from "../api/uploads";
 
 const toolOptions = [
-  "Shapes",
-  "Text",
-  "Background",
-  "Stroke",
-  "Layers",
-  "Designs",
+  { name: "Shapes", icon: Shapes },
+  { name: "Text", icon: Type },
+  { name: "Background", icon: Palette },
+  { name: "Stroke", icon: PenTool },
+  { name: "Layers", icon: Layers },
+  { name: "Designs", icon: FolderOpen },
 ];
 
 const shapeOptions = [
-  { name: "Circle", symbol: "●" },
-  { name: "Square", symbol: "■" },
-  { name: "Triangle", symbol: "▲" },
-  { name: "Rectangle", symbol: "▬" },
-  { name: "Line", symbol: "—" },
-  { name: "Diamond", symbol: "◆" },
+  { name: "Circle", icon: Circle },
+  { name: "Square", icon: Square },
+  { name: "Triangle", icon: Triangle },
+  { name: "Rectangle", icon: RectangleHorizontal },
+  { name: "Line", icon: Minus },
+  { name: "Diamond", icon: Diamond },
 ];
 
 const strokeOptions = [
-  { name: "Pen", symbol: "✎" },
-  { name: "Pencil", symbol: "✏" },
-  { name: "Brush", symbol: "🖌" },
-  { name: "Line", symbol: "—" },
+  { name: "Pen", icon: Pen },
+  { name: "Pencil", icon: Pencil },
+  { name: "Brush", icon: Brush },
+  { name: "Line", icon: Minus },
 ];
 
 interface ShapesPanelProps {
@@ -115,21 +132,26 @@ function ShapesPanel({
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Shapes</p>
       <div className="shapes-grid">
-        {shapeOptions.map((shape) => (
-          <button
-            key={shape.name}
-            disabled={userRole === "viewer"}
-            className={`shape-item ${activeShape === shape.name ? "shape-item--active" : ""}`}
-            onClick={() => {
-              onChangeActiveShape(shape.name);
-              onAddShape(shape.name);
-            }}
-            title={shape.name}
-          >
-            <span className="shape-item__symbol">{shape.symbol}</span>
-            <span className="shape-item__name">{shape.name}</span>
-          </button>
-        ))}
+        {shapeOptions.map((shape) => {
+          const Icon = shape.icon;
+          return (
+            <button
+              key={shape.name}
+              disabled={userRole === "viewer"}
+              className={`shape-item ${activeShape === shape.name ? "shape-item--active" : ""}`}
+              onClick={() => {
+                onChangeActiveShape(shape.name);
+                onAddShape(shape.name);
+              }}
+              title={shape.name}
+            >
+              <span className="shape-item__symbol">
+                <Icon size={18} />
+              </span>
+              <span className="shape-item__name">{shape.name}</span>
+            </button>
+          );
+        })}
       </div>
 
       <div className="image-upload-field side-menu__section-dashed">
@@ -366,18 +388,23 @@ function StrokePanel({ selectedStroke, onStrokeChange }: StrokePanelProps) {
     <div className="side-menu__panel">
       <p className="side-menu__panel-title">Drawing Tools</p>
       <div className="stroke-grid">
-        {strokeOptions.map((stroke) => (
-          <button
-            key={stroke.name}
-            disabled={userRole === "viewer"}
-            className={`stroke-item ${selectedStroke === stroke.name ? "stroke-item--active" : ""}`}
-            onClick={() => onStrokeChange(stroke.name)}
-            title={stroke.name}
-          >
-            <span className="stroke-item__symbol">{stroke.symbol}</span>
-            <span className="stroke-item__name">{stroke.name}</span>
-          </button>
-        ))}
+        {strokeOptions.map((stroke) => {
+          const Icon = stroke.icon;
+          return (
+            <button
+              key={stroke.name}
+              disabled={userRole === "viewer"}
+              className={`stroke-item ${selectedStroke === stroke.name ? "stroke-item--active" : ""}`}
+              onClick={() => onStrokeChange(stroke.name)}
+              title={stroke.name}
+            >
+              <span className="stroke-item__symbol">
+                <Icon size={18} />
+              </span>
+              <span className="stroke-item__name">{stroke.name}</span>
+            </button>
+          );
+        })}
       </div>
       <p className="side-menu__panel-hint">Select a drawing tool, then draw directly on the whiteboard.</p>
     </div>
@@ -1141,27 +1168,33 @@ export default function SideMenu({
         </div>
 
         {!collapsed && (
-          <>
-            <div className="side-menu__group">
-              {toolOptions.map((tool) => (
-                <button
-                  key={tool}
-                  type="button"
-                  className={`side-menu__item ${activeTool === tool ? "side-menu__item--active" : ""}`}
-                  onClick={() => {
-                    onToolChange(tool);
-                    if (tool !== "Shapes") {
-                      setActiveShape(null);
-                    }
-                  }}
-                >
-                  {tool}
-                </button>
-              ))}
+          <div className="side-menu__body">
+            <div className="tool-rail">
+              {toolOptions.map((tool) => {
+                const Icon = tool.icon;
+                const isActive = activeTool === tool.name;
+                return (
+                  <button
+                    key={tool.name}
+                    type="button"
+                    className={`tool-rail__item ${isActive ? "tool-rail__item--active" : ""}`}
+                    onClick={() => {
+                      onToolChange(tool.name);
+                      if (tool.name !== "Shapes") {
+                        setActiveShape(null);
+                      }
+                    }}
+                    title={tool.name}
+                    aria-label={tool.name}
+                  >
+                    <Icon size={18} />
+                  </button>
+                );
+              })}
             </div>
 
             <div className="side-menu__content">{renderToolPanel()}</div>
-          </>
+          </div>
         )}
       </div>
 
