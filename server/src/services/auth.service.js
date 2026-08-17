@@ -39,39 +39,44 @@ exports.getById = async (id) => {
 };
 
 // Refresh token tracking
+const hashToken = (token) => crypto.createHash("sha256").update(token).digest("hex");
+
 exports.createRefreshToken = async (userId, token, expiresAt) => {
   const id = crypto.randomUUID();
+  const tokenHash = hashToken(token);
   const result = await pool.query(
     `
     insert into refresh_tokens (id, user_id, token, expires_at)
     values ($1, $2, $3, $4)
     returning *
     `,
-    [id, userId, token, expiresAt.toISOString()]
+    [id, userId, tokenHash, expiresAt.toISOString()]
   );
   return result.rows[0];
 };
 
 exports.getRefreshToken = async (token) => {
+  const tokenHash = hashToken(token);
   const result = await pool.query(
     `
     select *
     from refresh_tokens
     where token = $1
     `,
-    [token]
+    [tokenHash]
   );
   return result.rows[0] || null;
 };
 
 exports.revokeRefreshToken = async (token) => {
+  const tokenHash = hashToken(token);
   const result = await pool.query(
     `
     delete from refresh_tokens
     where token = $1
     returning id
     `,
-    [token]
+    [tokenHash]
   );
   return result.rowCount > 0;
 };
