@@ -255,11 +255,17 @@ export default function CanvasBase() {
   useEffect(() => {
     const onGenerate = () => handleGenerateCode();
     const onInspect = () => handleInspectSchema();
+    const onAddShape = (e: Event) => {
+      const shape = (e as CustomEvent<{ shape: string }>).detail?.shape;
+      if (shape) addShape(shape);
+    };
     window.addEventListener("trigger-generate-code", onGenerate);
     window.addEventListener("trigger-inspect-schema", onInspect);
+    window.addEventListener("trigger-add-shape", onAddShape);
     return () => {
       window.removeEventListener("trigger-generate-code", onGenerate);
       window.removeEventListener("trigger-inspect-schema", onInspect);
+      window.removeEventListener("trigger-add-shape", onAddShape);
     };
   }, [handleGenerateCode, handleInspectSchema]);
 
