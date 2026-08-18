@@ -21,8 +21,8 @@ services:
     container_name: whiteboard-server
     environment:
       PORT: 4000
-      JWT_ACCESS_SECRET: supersecrettokenkeyforjwtACCESSWHITEBOARDapp
-      JWT_REFRESH_SECRET: supersecrettokenkeyforjwtREFRESHWHITEBOARDapp
+      JWT_ACCESS_SECRET: ${JWT_ACCESS_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
       DATABASE_URL: postgres://postgres:password@postgres:5432/whiteboard
       CLIENT_ORIGIN: http://localhost
     ports:

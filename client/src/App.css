@@ -9,11 +9,12 @@
   background-color: var(--bg);
   overflow: hidden;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
 }
 
 .canvas-base {
-  width: 100%;
+  flex: 1;
+  min-width: 0;
   height: calc(100vh - 56px);
   display: flex;
   flex-direction: column;
@@ -21,6 +22,66 @@
   padding: 16px;
   gap: 12px;
   overflow: hidden;
+}
+
+/* Read-only Inspector Panel */
+.inspector-panel {
+  width: 260px;
+  flex: 0 0 260px;
+  height: calc(100vh - 56px);
+  padding: var(--space-3) 14px;
+  background: var(--panel);
+  border: 1px solid var(--panel-border);
+  border-radius: 20px 0 0 20px;
+  box-shadow: var(--shadow-sm);
+  backdrop-filter: blur(24px);
+  overflow-y: auto;
+}
+
+.inspector-panel__header {
+  margin-bottom: 12px;
+}
+
+.inspector-panel__label {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.inspector-panel__properties {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+}
+
+.inspector-panel__property {
+  padding: var(--space-2);
+  border: 1px solid var(--panel-border);
+  border-radius: var(--radius-sm);
+  background: var(--panel-soft);
+}
+
+.inspector-panel__property dt {
+  margin-bottom: var(--space-1);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.inspector-panel__property dd {
+  margin: 0;
+  color: var(--text);
+  font-family: "JetBrains Mono", monospace;
+  font-size: 12px;
+}
+
+.inspector-panel__empty {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
 }
 
 /* Header Styles */
@@ -1320,5 +1381,50 @@
 
 .app-bar__action-btn--secondary:hover {
   background: rgba(255, 255, 255, 0.08);
+}
 
+/* ==========================================================================
+   Tool Dock (.tool-dock) Section
+   ========================================================================== */
+.tool-dock {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 200;
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: 999px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(12px);
+}
+
+.tool-dock__btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.tool-dock__btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-primary);
+}
+
+.tool-dock__btn--active {
+  background: var(--accent);
+  color: #ffffff;
+  border-color: var(--accent-hover);
+  box-shadow: 0 0 10px rgba(99, 102, 241, 0.4);
 }
