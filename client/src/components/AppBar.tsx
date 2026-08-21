@@ -14,9 +14,12 @@ export default function AppBar({ leftContent, centerContent, rightContent }: App
 
   const generateCode = useStore((state: any) => state.generateCode);
   const inspectSchema = useStore((state: any) => state.inspectSchema);
+  const codePreviewOpen = useStore((state: any) => state.codePreviewOpen);
+  const setCodePreviewOpen = useStore((state: any) => state.setCodePreviewOpen);
 
   const handleGenerateCodeClick = () => {
     generateCode();
+    setCodePreviewOpen(true);
   };
 
   const handleInspectSchemaClick = () => {
@@ -58,8 +61,17 @@ export default function AppBar({ leftContent, centerContent, rightContent }: App
                   onClick={handleGenerateCodeClick}
                   title="Convert design to React + Tailwind code"
                 >
-                  <Code size={14} />
                   <span>Generate Code</span>
+                </button>
+                <button
+                  id="app-bar-code-preview-toggle"
+                  type="button"
+                  className={`app-bar__action-btn ${codePreviewOpen ? "app-bar__action-btn--primary" : "app-bar__action-btn--secondary"}`}
+                  onClick={() => setCodePreviewOpen(!codePreviewOpen)}
+                  title="Toggle Code View split-screen"
+                >
+                  <Code size={14} />
+                  <span>{codePreviewOpen ? "Hide Code" : "Show Code"}</span>
                 </button>
                 <button
                   id="app-bar-inspect-schema-btn"

@@ -10,10 +10,17 @@ import {
   Image as ImageIcon,
   PenTool,
   Layers,
+  FolderOpen,
+  Shapes,
 } from "lucide-react";
 import { getPresignedUrl, uploadFileDirectly, registerAsset } from "../api/uploads";
 
-export default function VerticalToolRail() {
+interface VerticalToolRailProps {
+  activeLeftTab: string | null;
+  setActiveLeftTab: (tab: string | null) => void;
+}
+
+export default function VerticalToolRail({ activeLeftTab, setActiveLeftTab }: VerticalToolRailProps) {
   const activeTool = useStore((state: any) => state.activeTool);
   const setActiveTool = useStore((state: any) => state.setActiveTool);
   const selectedStroke = useStore((state: any) => state.selectedStroke);
@@ -92,121 +99,168 @@ export default function VerticalToolRail() {
     }
   };
 
+  const handleTabClick = (tab: string) => {
+    if (activeLeftTab === tab) {
+      setActiveLeftTab(null);
+    } else {
+      setActiveLeftTab(tab);
+    }
+  };
+
   return (
-    <div className="vertical-tool-rail">
-      {/* Selection Mode */}
-      <button
-        type="button"
-        className={`vertical-tool-rail__btn ${activeTool === "Shapes" ? "vertical-tool-rail__btn--active" : ""}`}
-        onClick={() => {
-          setActiveTool("Shapes");
-          selectElement(null);
-        }}
-        title="Select Tool"
-      >
-        <MousePointer2 size={20} />
-      </button>
+    <div className="vertical-tool-rail" style={{ display: "flex", flexDirection: "column", height: "calc(100vh - 56px)" }}>
+      {/* ── DESIGN TOOLS (Top Group) ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center" }}>
+        {/* Selection Mode */}
+        <button
+          type="button"
+          className={`vertical-tool-rail__btn ${activeTool === "Shapes" ? "vertical-tool-rail__btn--active" : ""}`}
+          onClick={() => {
+            setActiveTool("Shapes");
+            selectElement(null);
+          }}
+          title="Select Tool (V)"
+        >
+          <MousePointer2 size={20} />
+        </button>
 
-      {/* Shape Insertion popover */}
-      <div style={{ position: "relative" }}>
+        {/* Shape Insertion popover */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            disabled={userRole === "viewer"}
+            className={`vertical-tool-rail__btn ${shapeMenuOpen ? "vertical-tool-rail__btn--active" : ""}`}
+            onClick={() => {
+              setShapeMenuOpen(!shapeMenuOpen);
+              setBrushMenuOpen(false);
+            }}
+            title="Insert Shape"
+          >
+            <Square size={20} />
+          </button>
+
+          {shapeMenuOpen && (
+            <div className="vertical-tool-rail__popover">
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Square")}>
+                <Square size={16} /> <span>Square</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Rectangle")}>
+                <div style={{ width: 16, height: 10, border: "2px solid currentColor", borderRadius: 2 }} /> <span>Rectangle</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Circle")}>
+                <Circle size={16} /> <span>Circle</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Triangle")}>
+                <Triangle size={16} /> <span>Triangle</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Diamond")}>
+                <div style={{ width: 12, height: 12, border: "2px solid currentColor", transform: "rotate(45deg)", margin: "2px" }} /> <span>Diamond</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Line")}>
+                <Minus size={16} /> <span>Line</span>
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Text Tool */}
         <button
           type="button"
           disabled={userRole === "viewer"}
-          className={`vertical-tool-rail__btn ${shapeMenuOpen ? "vertical-tool-rail__btn--active" : ""}`}
-          onClick={() => {
-            setShapeMenuOpen(!shapeMenuOpen);
-            setBrushMenuOpen(false);
-          }}
-          title="Insert Shape"
+          className={`vertical-tool-rail__btn ${activeTool === "Text" ? "vertical-tool-rail__btn--active" : ""}`}
+          onClick={() => addText("Double click to edit")}
+          title="Add Text Block (T)"
         >
-          <Square size={20} />
+          <Type size={20} />
         </button>
 
-        {shapeMenuOpen && (
-          <div className="vertical-tool-rail__popover">
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Square")}>
-              <Square size={16} /> <span>Square</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Rectangle")}>
-              <div style={{ width: 16, height: 10, border: "2px solid currentColor", borderRadius: 2 }} /> <span>Rectangle</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Circle")}>
-              <Circle size={16} /> <span>Circle</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Triangle")}>
-              <Triangle size={16} /> <span>Triangle</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Diamond")}>
-              <div style={{ width: 12, height: 12, border: "2px solid currentColor", transform: "rotate(45deg)", margin: "2px" }} /> <span>Diamond</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleShapeSelect("Line")}>
-              <Minus size={16} /> <span>Line</span>
-            </button>
-          </div>
-        )}
-      </div>
+        {/* Drawing Brush tool */}
+        <div style={{ position: "relative" }}>
+          <button
+            type="button"
+            disabled={userRole === "viewer"}
+            className={`vertical-tool-rail__btn ${activeTool === "Stroke" ? "vertical-tool-rail__btn--active" : ""}`}
+            onClick={() => {
+              setBrushMenuOpen(!brushMenuOpen);
+              setShapeMenuOpen(false);
+            }}
+            title="Drawing Brush"
+          >
+            <PenTool size={20} />
+          </button>
 
-      {/* Text Tool */}
-      <button
-        type="button"
-        disabled={userRole === "viewer"}
-        className={`vertical-tool-rail__btn ${activeTool === "Text" ? "vertical-tool-rail__btn--active" : ""}`}
-        onClick={() => addText("Double click to edit")}
-        title="Add Text Block"
-      >
-        <Type size={20} />
-      </button>
+          {brushMenuOpen && (
+            <div className="vertical-tool-rail__popover">
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Pen")}>
+                <span>Pen Brush</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Pencil")}>
+                <span>Pencil</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Brush")}>
+                <span>Brush Strong</span>
+              </button>
+              <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Line")}>
+                <span>Straight Line</span>
+              </button>
+            </div>
+          )}
+        </div>
 
-      {/* Drawing Brush tool */}
-      <div style={{ position: "relative" }}>
+        {/* Image Uploader */}
         <button
           type="button"
-          disabled={userRole === "viewer"}
-          className={`vertical-tool-rail__btn ${activeTool === "Stroke" ? "vertical-tool-rail__btn--active" : ""}`}
-          onClick={() => {
-            setBrushMenuOpen(!brushMenuOpen);
-            setShapeMenuOpen(false);
-          }}
-          title="Drawing Brush"
+          disabled={userRole === "viewer" || uploading}
+          className={`vertical-tool-rail__btn ${uploading ? "vertical-tool-rail__btn--active" : ""}`}
+          onClick={handleImageClick}
+          title="Upload Image"
         >
-          <PenTool size={20} />
+          <ImageIcon size={20} />
         </button>
-
-        {brushMenuOpen && (
-          <div className="vertical-tool-rail__popover">
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Pen")}>
-              <span>Pen Brush</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Pencil")}>
-              <span>Pencil</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Brush")}>
-              <span>Brush Strong</span>
-            </button>
-            <button type="button" className="vertical-tool-rail__popover-item" onClick={() => handleBrushSelect("Line")}>
-              <span>Straight Line</span>
-            </button>
-          </div>
-        )}
+        <input
+          type="file"
+          accept="image/*"
+          ref={fileInputRef}
+          onChange={handleImageUpload}
+          style={{ display: "none" }}
+        />
       </div>
 
-      {/* Image Uploader */}
-      <button
-        type="button"
-        disabled={userRole === "viewer" || uploading}
-        className={`vertical-tool-rail__btn ${uploading ? "vertical-tool-rail__btn--active" : ""}`}
-        onClick={handleImageClick}
-        title="Upload Image"
-      >
-        <ImageIcon size={20} />
-      </button>
-      <input
-        type="file"
-        accept="image/*"
-        ref={fileInputRef}
-        onChange={handleImageUpload}
-        style={{ display: "none" }}
-      />
+      {/* Spacer pushing navigation tabs to bottom */}
+      <div style={{ flex: 1 }} />
+
+      {/* ── CONTEXTUAL NAVIGATION TABS (Bottom Group) ── */}
+      <div style={{ display: "flex", flexDirection: "column", gap: "12px", alignItems: "center", borderTop: "1px solid var(--border)", paddingTop: "12px", width: "100%" }}>
+        {/* Layers Tab */}
+        <button
+          type="button"
+          className={`vertical-tool-rail__btn ${activeLeftTab === "Layers" ? "vertical-tool-rail__btn--active" : ""}`}
+          onClick={() => handleTabClick("Layers")}
+          title="Layers (Toggle panel)"
+        >
+          <Layers size={18} />
+        </button>
+
+        {/* Assets Tab */}
+        <button
+          type="button"
+          className={`vertical-tool-rail__btn ${activeLeftTab === "Assets" ? "vertical-tool-rail__btn--active" : ""}`}
+          onClick={() => handleTabClick("Assets")}
+          title="Assets / Designs (Toggle panel)"
+        >
+          <FolderOpen size={18} />
+        </button>
+
+        {/* Settings/Components Tab */}
+        <button
+          type="button"
+          className={`vertical-tool-rail__btn ${activeLeftTab === "Components" ? "vertical-tool-rail__btn--active" : ""}`}
+          onClick={() => handleTabClick("Components")}
+          title="Canvas & Selection Settings"
+        >
+          <Shapes size={18} />
+        </button>
+      </div>
     </div>
   );
 }

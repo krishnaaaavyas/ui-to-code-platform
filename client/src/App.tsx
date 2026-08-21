@@ -13,7 +13,7 @@ import { useStore } from "./store/useStore";
 
 function App() {
   const canvasRef = useRef<any>(null);
-  const [menuCollapsed, setMenuCollapsed] = useState(false);
+  const [activeLeftTab, setActiveLeftTab] = useState<string | null>("Components");
 
   // Bind Zustand layout states
   const codePreviewOpen = useStore((state: any) => state.codePreviewOpen);
@@ -35,33 +35,45 @@ function App() {
     <ErrorBoundary>
       <AppBar />
       <div className="app">
-        <VerticalToolRail />
-        <SideMenu
-          collapsed={menuCollapsed}
-          onToggle={() => setMenuCollapsed((prev) => !prev)}
-          onExportPNG={() => canvasRef.current?.exportToPNG()}
-          onExportJSON={() => canvasRef.current?.exportToJSON()}
-          onImportJSON={(e) => canvasRef.current?.importJSON(e)}
+        {/* Left Side: compact tool rail + contextual side panel drawer */}
+        <VerticalToolRail
+          activeLeftTab={activeLeftTab}
+          setActiveLeftTab={setActiveLeftTab}
         />
-        <CanvasBase ref={canvasRef} />
+        {activeLeftTab && (
+          <SideMenu
+            activeTab={activeLeftTab}
+            onClose={() => setActiveLeftTab(null)}
+            onExportPNG={() => canvasRef.current?.exportToPNG()}
+            onExportJSON={() => canvasRef.current?.exportToJSON()}
+            onImportJSON={(e) => canvasRef.current?.importJSON(e)}
+          />
+        )}
+
+        {/* Center Side: large dominant canvas split-screen side-by-side with non-blocking code preview */}
+        <div className="center-workspace">
+          <CanvasBase ref={canvasRef} />
+          {codePreviewOpen && (
+            <CodePreviewPanel
+              isOpen={codePreviewOpen}
+              onClose={() => setCodePreviewOpen(false)}
+              result={codeGenResult}
+              proposedRefinedResult={proposedRefinedResult}
+              isLoading={codeGenLoading}
+              error={codeGenError}
+              onRefine={refineCode}
+              onRegenerate={generateCode}
+              onAcceptRefinement={acceptRefinement}
+              onRejectRefinement={rejectRefinement}
+            />
+          )}
+        </div>
+
+        {/* Right Side: Contextual properties inspector */}
         <InspectorPanel />
         <Toast />
 
-        {/* ── Code Preview Panel (slide-over drawer) ── */}
-        <CodePreviewPanel
-          isOpen={codePreviewOpen}
-          onClose={() => setCodePreviewOpen(false)}
-          result={codeGenResult}
-          proposedRefinedResult={proposedRefinedResult}
-          isLoading={codeGenLoading}
-          error={codeGenError}
-          onRefine={refineCode}
-          onRegenerate={generateCode}
-          onAcceptRefinement={acceptRefinement}
-          onRejectRefinement={rejectRefinement}
-        />
-
-        {/* Schema Inspector Modal */}
+        {/* Schema Inspector Modal overlay */}
         {isSchemaInspectorOpen && (
           <Modal
             title={

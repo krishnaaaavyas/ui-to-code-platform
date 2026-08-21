@@ -1732,4 +1732,16 @@
   line-height: 1.5;
 }
 
+/* Center Workspace Layout Splitter */
+.center-workspace {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  height: calc(100vh - 56px);
+  min-width: 0;
+  overflow: hidden;
+  position: relative;
+}
+
+
 
