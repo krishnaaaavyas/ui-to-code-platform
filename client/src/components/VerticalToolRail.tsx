@@ -11,7 +11,7 @@ import {
   PenTool,
   Layers,
   FolderOpen,
-  Shapes,
+  Sliders,
 } from "lucide-react";
 import { getPresignedUrl, uploadFileDirectly, registerAsset } from "../api/uploads";
 
@@ -251,14 +251,14 @@ export default function VerticalToolRail({ activeLeftTab, setActiveLeftTab }: Ve
           <FolderOpen size={18} />
         </button>
 
-        {/* Settings/Components Tab */}
+        {/* Canvas Settings Tab */}
         <button
           type="button"
-          className={`vertical-tool-rail__btn ${activeLeftTab === "Components" ? "vertical-tool-rail__btn--active" : ""}`}
-          onClick={() => handleTabClick("Components")}
-          title="Canvas & Selection Settings"
+          className={`vertical-tool-rail__btn ${activeLeftTab === "CanvasSettings" ? "vertical-tool-rail__btn--active" : ""}`}
+          onClick={() => handleTabClick("CanvasSettings")}
+          title="Canvas & Page Settings"
         >
-          <Shapes size={18} />
+          <Sliders size={18} />
         </button>
       </div>
     </div>

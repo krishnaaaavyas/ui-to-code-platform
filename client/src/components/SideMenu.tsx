@@ -1,7 +1,7 @@
 import React from "react";
 import LayersPanel from "./LayersPanel";
 import DesignsPanel from "./DesignsPanel";
-import ComponentsPanel from "./ComponentsPanel";
+import CanvasSettingsPanel from "./CanvasSettingsPanel";
 
 interface SideMenuProps {
   activeTab: string;
@@ -30,9 +30,9 @@ export default function SideMenu({
             onImportJSON={onImportJSON}
           />
         );
-      case "Components":
+      case "CanvasSettings":
       default:
-        return <ComponentsPanel />;
+        return <CanvasSettingsPanel />;
     }
   };
 
@@ -40,7 +40,9 @@ export default function SideMenu({
     <aside className="side-menu">
       <div className="side-menu__top" style={{ height: "100%", display: "flex", flexDirection: "column" }}>
         <div className="side-menu__header">
-          <span className="side-menu__label">{activeTab}</span>
+          <span className="side-menu__label">
+            {activeTab === "CanvasSettings" ? "Canvas Settings" : activeTab}
+          </span>
           <button
             type="button"
             className="side-menu__toggle"

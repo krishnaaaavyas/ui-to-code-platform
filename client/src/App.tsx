@@ -13,7 +13,7 @@ import { useStore } from "./store/useStore";
 
 function App() {
   const canvasRef = useRef<any>(null);
-  const [activeLeftTab, setActiveLeftTab] = useState<string | null>("Components");
+  const [activeLeftTab, setActiveLeftTab] = useState<string | null>(null);
 
   // Bind Zustand layout states
   const codePreviewOpen = useStore((state: any) => state.codePreviewOpen);
