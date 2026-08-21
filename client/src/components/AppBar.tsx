@@ -12,12 +12,15 @@ export default function AppBar({ leftContent, centerContent, rightContent }: App
   const user = useStore((state: any) => state.user);
   const documentName = useStore((state: any) => state.documentName);
 
+  const generateCode = useStore((state: any) => state.generateCode);
+  const inspectSchema = useStore((state: any) => state.inspectSchema);
+
   const handleGenerateCodeClick = () => {
-    window.dispatchEvent(new CustomEvent("trigger-generate-code"));
+    generateCode();
   };
 
   const handleInspectSchemaClick = () => {
-    window.dispatchEvent(new CustomEvent("trigger-inspect-schema"));
+    inspectSchema();
   };
 
   return (

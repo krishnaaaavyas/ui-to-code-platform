@@ -1,11 +1,7 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer, Image as KonvaImage } from "react-konva";
-import SideMenu from "./SideMenu";
-import CodePreviewPanel from "./CodePreviewPanel";
-import Modal from "./Modal";
 import { useStore } from "../store/useStore";
 import { updateDocument } from "../api/documents";
-import { generateCodeFromCanvas, refineGeneratedCode } from "../api/ai";
 import { initSocket, getSocket, disconnectSocket } from "../lib/socket";
 
 interface CanvasImageProps {
@@ -90,12 +86,18 @@ const strokeConfig: Record<string, { strokeWidth: number; lineCap: "round" | "bu
   Line: { strokeWidth: 3, lineCap: "round", stroke: "#2563eb" },
 };
 
-export default function CanvasBase() {
+const CanvasBase = forwardRef((props: any, ref: any) => {
   const boardRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
   const objectRefs = useRef<Record<string, any>>({});
   const lastPinchDistanceRef = useRef(0);
+
+  useImperativeHandle(ref, () => ({
+    exportToPNG,
+    exportToJSON,
+    importJSON: handleImportJSON,
+  }));
 
   const [menuCollapsed, setMenuCollapsed] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
@@ -143,131 +145,7 @@ export default function CanvasBase() {
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const lastCursorEmitRef = useRef(0);
 
-  // ── Design-to-Code state ──────────────────────────────────────────────
-  const [codePreviewOpen, setCodePreviewOpen] = useState(false);
-  const [codeGenLoading, setCodeGenLoading] = useState(false);
-  const [codeGenResult, setCodeGenResult] = useState<any>(null);
-  const [proposedRefinedResult, setProposedRefinedResult] = useState<any>(null);
-  const [codeGenError, setCodeGenError] = useState<string | null>(null);
-  const [isSchemaInspectorOpen, setIsSchemaInspectorOpen] = useState(false);
-  const [localSchema, setLocalSchema] = useState<any>(null);
 
-  const handleGenerateCode = useCallback(async () => {
-    if (elements.length === 0) {
-      setCodeGenError("Your canvas is empty. Add some shapes, text, or images first.");
-      setCodePreviewOpen(true);
-      return;
-    }
-    setCodeGenError(null);
-    setCodeGenResult(null);
-    setProposedRefinedResult(null);
-    setCodeGenLoading(true);
-    setCodePreviewOpen(true);
-    try {
-      const payload = {
-        elements,
-        boardConfig: {
-          boardWidth,
-          boardHeight,
-          backgroundColor: boardColor,
-        },
-      };
-      const result = await generateCodeFromCanvas(payload);
-      setCodeGenResult(result);
-    } catch (err: any) {
-      setCodeGenError(err.message || "Code generation failed. Please try again.");
-    } finally {
-      setCodeGenLoading(false);
-    }
-  }, [elements, boardWidth, boardHeight, boardColor]);
-
-  const handleRefineCode = useCallback(async (instruction: string) => {
-    if (!codeGenResult || !codeGenResult.pipeline?.normalizedSchema) {
-      setCodeGenError("No active UI schema to refine. Generate code first.");
-      return;
-    }
-    setCodeGenError(null);
-    setCodeGenLoading(true);
-    try {
-      const payload = {
-        normalizedSchema: codeGenResult.pipeline.normalizedSchema,
-        files: codeGenResult.generated?.files || [],
-        instruction,
-        stack: "react-tailwind",
-      };
-      const response = await refineGeneratedCode(payload);
-      if (response.success && response.generated) {
-        setProposedRefinedResult(response.generated);
-      } else {
-        throw new Error("Invalid response received from code refinement.");
-      }
-    } catch (err: any) {
-      setCodeGenError(err.message || "Code refinement failed. Please try again.");
-    } finally {
-      setCodeGenLoading(false);
-    }
-  }, [codeGenResult]);
-
-  const handleAcceptRefinement = useCallback(() => {
-    if (proposedRefinedResult) {
-      setCodeGenResult((prev: any) => ({
-        ...prev,
-        generated: proposedRefinedResult,
-      }));
-      setProposedRefinedResult(null);
-      showToast("Refinement changes applied successfully.", "success");
-    }
-  }, [proposedRefinedResult, showToast]);
-
-  const handleRejectRefinement = useCallback(() => {
-    setProposedRefinedResult(null);
-    showToast("Refinement changes discarded.", "info");
-  }, [showToast]);
-
-  const handleInspectSchema = useCallback(() => {
-    const doc = serializeDocument();
-    
-    // Spawn Web Worker dynamically to keep main-thread responsive
-    const worker = new Worker(
-      new URL("../workers/schema.worker.ts", import.meta.url),
-      { type: "module" }
-    );
-    
-    worker.postMessage({ doc });
-    
-    worker.onmessage = (e) => {
-      const { success, schema, error } = e.data;
-      if (success) {
-        setLocalSchema(schema);
-        setIsSchemaInspectorOpen(true);
-      } else {
-        showToast("Schema extraction failed: " + error, "error");
-      }
-      worker.terminate();
-    };
-
-    worker.onerror = (err) => {
-      showToast("Worker calculation error", "error");
-      worker.terminate();
-    };
-  }, [serializeDocument, showToast]);
-
-  useEffect(() => {
-    const onGenerate = () => handleGenerateCode();
-    const onInspect = () => handleInspectSchema();
-    const onAddShape = (e: Event) => {
-      const shape = (e as CustomEvent<{ shape: string }>).detail?.shape;
-      if (shape) addShape(shape);
-    };
-    window.addEventListener("trigger-generate-code", onGenerate);
-    window.addEventListener("trigger-inspect-schema", onInspect);
-    window.addEventListener("trigger-add-shape", onAddShape);
-    return () => {
-      window.removeEventListener("trigger-generate-code", onGenerate);
-      window.removeEventListener("trigger-inspect-schema", onInspect);
-      window.removeEventListener("trigger-add-shape", onAddShape);
-    };
-  }, [handleGenerateCode, handleInspectSchema]);
 
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
@@ -748,97 +626,7 @@ export default function CanvasBase() {
     zoomAtPoint(centerPoint, nextScale);
   };
 
-  const addShape = (shapeType: string) => {
-    let newElement: any = {
-      id: `element-${Date.now()}`,
-      visible: true,
-      locked: false,
-      rotation: 0,
-      fill: "#2563eb",
-      stroke: "#1d4ed8",
-      strokeWidth: 3,
-      name: shapeType,
-    };
 
-    if (shapeType === "Circle") {
-      newElement = {
-        ...newElement,
-        type: "circle",
-        x: boardWidth / 2,
-        y: boardHeight / 2,
-        radius: 60,
-      };
-    } else if (shapeType === "Square") {
-      newElement = {
-        ...newElement,
-        type: "rect",
-        x: boardWidth / 2 - 60,
-        y: boardHeight / 2 - 60,
-        width: 120,
-        height: 120,
-      };
-    } else if (shapeType === "Rectangle") {
-      newElement = {
-        ...newElement,
-        type: "rect",
-        x: boardWidth / 2 - 80,
-        y: boardHeight / 2 - 50,
-        width: 160,
-        height: 100,
-      };
-    } else if (shapeType === "Triangle") {
-      newElement = {
-        ...newElement,
-        type: "triangle",
-        x: boardWidth / 2,
-        y: boardHeight / 2,
-        radius: 60,
-      };
-    } else if (shapeType === "Diamond") {
-      newElement = {
-        ...newElement,
-        type: "diamond",
-        x: boardWidth / 2,
-        y: boardHeight / 2,
-        radius: 60,
-      };
-    } else if (shapeType === "Line") {
-      newElement = {
-        ...newElement,
-        type: "line",
-        x: boardWidth / 2 - 80,
-        y: boardHeight / 2 - 5,
-        width: 160,
-        height: 10,
-        fill: "#2563eb",
-        stroke: "#2563eb",
-        strokeWidth: 0,
-      };
-    }
-
-    addElement(newElement);
-    setActiveTool("Shapes");
-    selectElement(newElement.id);
-  };
-
-  const addText = (text: string) => {
-    const newElement = {
-      id: `element-${Date.now()}`,
-      type: "text",
-      name: "Text",
-      x: boardWidth / 2 - 160,
-      y: boardHeight / 2 - 20,
-      width: 320,
-      text,
-      fontSize: 20,
-      fill: "#0f172a",
-      visible: true,
-      locked: false,
-    };
-    addElement(newElement);
-    setActiveTool("Text");
-    selectElement(newElement.id);
-  };
 
   const changeBackground = (color: string) => {
     setBackgroundColor(color);
@@ -1281,52 +1069,6 @@ export default function CanvasBase() {
   return (
     <section className="canvas-base">
       <div className="canvas-workspace">
-        <SideMenu
-          collapsed={menuCollapsed}
-          onToggle={() => setMenuCollapsed((prev) => !prev)}
-          boardWidth={boardWidth}
-          boardHeight={boardHeight}
-          onBoardWidthChange={updateBoardWidth}
-          onBoardHeightChange={updateBoardHeight}
-          activeTool={activeTool}
-          onToolChange={setActiveTool}
-          onAddShape={addShape}
-          onAddText={addText}
-          backgroundColor={boardColor}
-          onBackgroundChange={changeBackground}
-          selectedStroke={selectedStroke}
-          onStrokeChange={(shape) => {
-            setSelectedStroke(shape);
-            setActiveTool("Stroke");
-          }}
-          selectedItem={selectedItem}
-          onDeleteSelected={() => {
-            if (!selectedElementId) return;
-            deleteElement(selectedElementId);
-          }}
-          onChangeSelectedColor={(color) => {
-            if (!selectedElementId) return;
-            updateElement(selectedElementId, { fill: color, stroke: color }, true);
-          }}
-          onExportPNG={exportToPNG}
-          onExportJSON={exportToJSON}
-          onImportJSON={handleImportJSON}
-        />
-
-        {/* ── Code Preview Panel (slide-over drawer) ── */}
-        <CodePreviewPanel
-          isOpen={codePreviewOpen}
-          onClose={() => setCodePreviewOpen(false)}
-          result={codeGenResult}
-          proposedRefinedResult={proposedRefinedResult}
-          isLoading={codeGenLoading}
-          error={codeGenError}
-          onRefine={handleRefineCode}
-          onRegenerate={handleGenerateCode}
-          onAcceptRefinement={handleAcceptRefinement}
-          onRejectRefinement={handleRejectRefinement}
-        />
-
         <div ref={boardRef} className="canvas-base__board">
           {/* Live Collaborators Avatars (Top Right Canvas Overlay) */}
           {collaborators.length > 0 && (
@@ -1448,6 +1190,7 @@ export default function CanvasBase() {
               draggable={spacePressed || middleMouseDown}
               style={{ cursor: spacePressed ? (middleMouseDown ? "grabbing" : "grab") : "default" }}
               onWheel={handleWheel}
+              onWheelZ={handleWheel}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleStageTouchEnd}
               onMouseDown={(e: any) => {
@@ -1573,65 +1316,9 @@ export default function CanvasBase() {
             </button>
           </div>
         </div>
-
-        {/* Schema Inspector Modal */}
-        {isSchemaInspectorOpen && (
-          <Modal
-            title={
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div
-                  style={{
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "8px",
-                    background: "rgba(99,102,241,0.15)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                  </svg>
-                </div>
-                <span style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-primary)" }}>
-                  UI Schema Inspector
-                </span>
-              </div>
-            }
-            onClose={() => setIsSchemaInspectorOpen(false)}
-            footer={
-              <button
-                type="button"
-                className="side-menu__btn-secondary"
-                onClick={() => setIsSchemaInspectorOpen(false)}
-              >
-                Close
-              </button>
-            }
-          >
-            <p style={{ margin: "0 0 12px", fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5" }}>
-              This is the raw, frontend-extracted semantic AST generated by the canvas transformer. It is normalized and enriched downstream by the AI generation pipeline.
-            </p>
-            <pre
-              style={{
-                margin: 0,
-                padding: "14px",
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                fontSize: "11px",
-                color: "var(--text-primary)",
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                overflowX: "auto",
-                maxHeight: "380px",
-              }}
-            >
-              {JSON.stringify(localSchema, null, 2)}
-            </pre>
-          </Modal>
-        )}
       </div>
     </section>
   );
-}
+});
+
+export default CanvasBase;

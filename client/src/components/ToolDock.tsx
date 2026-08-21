@@ -7,6 +7,7 @@ import {
   Minus,
   Type,
 } from "lucide-react";
+import { useStore } from "../store/useStore";
 
 const dockTools = [
   { name: "Select", icon: MousePointer2 },
@@ -18,11 +19,20 @@ const dockTools = [
 ];
 
 export default function ToolDock() {
-  const [activeShape, setActiveShape] = useState<string | null>(null);
+  const [activeShape, setActiveShape] = useState<string | null>("Select");
+  const addShape = useStore((state: any) => state.addShape);
+  const addText = useStore((state: any) => state.addText);
+  const setActiveTool = useStore((state: any) => state.setActiveTool);
 
   const handleClick = (name: string) => {
     setActiveShape(name);
-    window.dispatchEvent(new CustomEvent("trigger-add-shape", { detail: { shape: name } }));
+    if (name === "Select") {
+      setActiveTool("Shapes");
+    } else if (name === "Text") {
+      addText("New Text");
+    } else {
+      addShape(name);
+    }
   };
 
   return (
