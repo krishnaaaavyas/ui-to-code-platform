@@ -938,6 +938,8 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
       text={item.text}
       width={item.width}
       fontSize={item.fontSize}
+      fontFamily={item.fontFamily}
+      fontStyle={item.fontWeight}
       fill={item.fill || "#000"}
       draggable={!item.locked && userRole !== "viewer"}
       onDragMove={(e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false)}
