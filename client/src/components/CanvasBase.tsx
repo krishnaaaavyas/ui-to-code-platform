@@ -1,8 +1,9 @@
 import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer, Image as KonvaImage } from "react-konva";
 import { useStore } from "../store/useStore";
-import { updateDocument } from "../api/documents";
 import { initSocket, getSocket, disconnectSocket } from "../lib/socket";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useAutosave } from "../hooks/useAutosave";
 
 interface CanvasImageProps {
   item: any;
@@ -145,6 +146,10 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const lastCursorEmitRef = useRef(0);
 
+  // Custom hooks for keydown shortcuts and autosaving
+  useKeyboardShortcuts();
+  useAutosave(serializeDocument);
+
 
 
   // Canvas panning state
@@ -272,58 +277,7 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     }
   };
 
-  // Debounced autosave effect
-  useEffect(() => {
-    if (!user || !documentId || !isDirty) return;
 
-    const timeoutId = setTimeout(async () => {
-      try {
-        setSaveStatus("saving");
-        const payload = {
-          name: documentName,
-          data: serializeDocument(),
-          version: documentVersion,
-          manual: false,
-        };
-        const updatedDoc = await updateDocument(documentId, payload);
-        useStore.setState({
-          isDirty: false,
-          saveStatus: "saved",
-          documentVersion: updatedDoc.version,
-          saveError: null,
-        });
-      } catch (e: any) {
-        console.error("Autosave failed:", e);
-        if (e.status === 409 || e.message === "conflict") {
-          useStore.setState({
-            saveStatus: "conflict",
-            saveError: "Version conflict: This design has been updated elsewhere. Please reload or duplicate.",
-          });
-          showToast("Autosave Conflict: This file was edited elsewhere. Save failed.", "error");
-        } else {
-          useStore.setState({
-            saveStatus: "error",
-            saveError: e.message || "Autosave failed",
-          });
-        }
-      }
-    }, 1500);
-
-    return () => clearTimeout(timeoutId);
-  }, [
-    user,
-    documentId,
-    isDirty,
-    elements,
-    boardWidth,
-    boardHeight,
-    boardColor,
-    documentName,
-    documentVersion,
-    serializeDocument,
-    setSaveStatus,
-    showToast,
-  ]);
 
   // Set up resize observer to keep canvas responsive
   useEffect(() => {
@@ -371,96 +325,7 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     }
   }, [selectedElementId, elements]);
 
-  // Keyboard shortcuts for Undo/Redo and Delete Selected
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      const isInput = activeEl && (
-        activeEl.tagName === "INPUT" || 
-        activeEl.tagName === "TEXTAREA" || 
-        (activeEl as HTMLElement).isContentEditable
-      );
 
-      if (isInput) return;
-
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
-
-      if (cmdOrCtrl && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (userRole === "viewer") return;
-        if (e.shiftKey) {
-          useStore.getState().redo();
-          const socket = getSocket();
-          if (socket && socket.connected) {
-            socket.emit("element.op", {
-              documentId,
-              op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
-            });
-          }
-        } else {
-          useStore.getState().undo();
-          const socket = getSocket();
-          if (socket && socket.connected) {
-            socket.emit("element.op", {
-              documentId,
-              op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
-            });
-          }
-        }
-      } else if (cmdOrCtrl && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        if (userRole === "viewer") return;
-        useStore.getState().redo();
-        const socket = getSocket();
-        if (socket && socket.connected) {
-          socket.emit("element.op", {
-            documentId,
-            op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
-          });
-        }
-      } else if (cmdOrCtrl && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        if (userRole === "viewer") return;
-        if (selectedElementId) {
-          useStore.getState().duplicateElement(selectedElementId);
-        }
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        if (userRole === "viewer") return;
-        if (selectedElementId) {
-          e.preventDefault();
-          deleteElement(selectedElementId);
-        }
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        selectElement(null);
-        setDraftElement(null);
-        setIsDrawing(false);
-      } else if (!cmdOrCtrl) {
-        if (e.key.toLowerCase() === "v") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Shapes");
-        } else if (e.key.toLowerCase() === "t") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Text");
-        } else if (e.key.toLowerCase() === "p") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Stroke");
-        } else if (e.key.toLowerCase() === "b") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Background");
-        } else if (e.key.toLowerCase() === "d") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Designs");
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [selectedElementId, deleteElement, selectElement, setDraftElement, setIsDrawing, userRole, documentId]);
 
   const exportToPNG = () => {
     const stage = stageRef.current;
