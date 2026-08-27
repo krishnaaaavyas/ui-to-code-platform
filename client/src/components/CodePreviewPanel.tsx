@@ -81,7 +81,7 @@ export default function CodePreviewPanel({
   // Map files to CodeSandbox Sandpack layout
   const getSandpackFiles = () => {
     const spFiles: Record<string, string> = {};
-    
+
     // Default entrypoint if not found
     let hasApp = false;
     files.forEach((f) => {
@@ -153,61 +153,73 @@ export default function CodePreviewPanel({
   );
 
   return (
-    <div className="flex-1 flex flex-col h-full overflow-hidden bg-slate-950">
-      {/* Header */}
-      <div className="p-4 border-b border-slate-800 flex items-center justify-between bg-slate-900/50 flex-shrink-0">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
-              <polyline points="16,18 22,12 16,6" />
-              <polyline points="8,6 2,12 8,18" />
-            </svg>
-          </div>
-          <div>
-            <h2 className="text-xs font-bold text-slate-100">
-              {proposedRefinedResult ? "Review Changes" : "Design to Code"}
-            </h2>
-            <p className="text-[10px] text-slate-400">
-              {isLoading
-                ? "Processing structure..."
-                : proposedRefinedResult
-                ? "Verify changes side-by-side"
-                : result
-                ? `React + Tailwind • ${files.length} files`
-                : "Convert canvas elements"}
-            </p>
-          </div>
-        </div>
+    <>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] transition-opacity duration-300 ${isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
+          }`}
+      />
 
-        <div className="flex items-center gap-1.5">
-          {result && !isLoading && !proposedRefinedResult && (
+      {/* Drawer */}
+      <div
+        className={`fixed top-0 right-0 bottom-0 w-full max-w-[340px] bg-slate-950 border-l border-slate-800 shadow-2xl z-[1001] flex flex-col transition-transform duration-350 ease-out ${isOpen ? "translate-x-0" : "translate-x-full"
+          }`}
+      >
+        {/* Header */}
+        <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
+          <div className="flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-600 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5">
+                <polyline points="16,18 22,12 16,6" />
+                <polyline points="8,6 2,12 8,18" />
+              </svg>
+            </div>
+            <div>
+              <h2 className="text-base font-bold text-slate-100">
+                {proposedRefinedResult ? "Review Refinement Changes" : "Design to Code"}
+              </h2>
+              <p className="text-xs text-slate-400">
+                {isLoading
+                  ? "Processing design structure..."
+                  : proposedRefinedResult
+                    ? "Verify changes side-by-side before applying"
+                    : result
+                      ? `React + Tailwind • ${files.length} files generated`
+                      : "Convert canvas elements into responsive web pages"}
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            {result && !isLoading && !proposedRefinedResult && (
+              <button
+                type="button"
+                onClick={handleDownloadAll}
+                className="px-2.5 py-1 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20 transition-all flex items-center gap-1 text-[10px] font-semibold"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+                  <polyline points="7,10 12,15 17,10" />
+                  <line x1="12" y1="15" x2="12" y2="3" />
+                </svg>
+                Export
+              </button>
+            )}
+
             <button
               type="button"
-              onClick={handleDownloadAll}
-              className="px-2.5 py-1 rounded bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-500/20 transition-all flex items-center gap-1 text-[10px] font-semibold"
+              onClick={onClose}
+              className="w-7 h-7 rounded bg-slate-800 border border-slate-700 text-slate-400 hover:bg-red-500/15 hover:text-red-400 transition-all flex items-center justify-center"
+              title="Collapse Panel"
             >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
-                <polyline points="7,10 12,15 17,10" />
-                <line x1="12" y1="15" x2="12" y2="3" />
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <line x1="18" y1="6" x2="6" y2="18" />
+                <line x1="6" y1="6" x2="18" y2="18" />
               </svg>
-              Export
             </button>
-          )}
-
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-7 h-7 rounded bg-slate-800 border border-slate-700 text-slate-400 hover:bg-red-500/15 hover:text-red-400 transition-all flex items-center justify-center"
-            title="Collapse Panel"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
-              <line x1="18" y1="6" x2="6" y2="18" />
-              <line x1="6" y1="6" x2="18" y2="18" />
-            </svg>
-          </button>
+          </div>
         </div>
-      </div>
 
         {/* Loading Spinner */}
         {isLoading && (
@@ -246,11 +258,10 @@ export default function CodePreviewPanel({
                   <button
                     key={i}
                     onClick={() => setActiveFileIndex(i)}
-                    className={`px-3 py-1.5 rounded-t-lg text-xs font-mono border-t border-x transition-all ${
-                      i === activeFileIndex
+                    className={`px-3 py-1.5 rounded-t-lg text-xs font-mono border-t border-x transition-all ${i === activeFileIndex
                         ? "bg-slate-900 border-slate-800 text-indigo-400"
                         : "bg-transparent border-transparent text-slate-500 hover:text-slate-300"
-                    }`}
+                      }`}
                   >
                     {f.filename}
                   </button>
@@ -352,11 +363,10 @@ export default function CodePreviewPanel({
                   key={tab.id}
                   type="button"
                   onClick={() => setActiveTab(tab.id as any)}
-                  className={`py-3.5 mr-6 text-sm font-bold border-b-2 transition-all ${
-                    activeTab === tab.id
+                  className={`py-3.5 mr-6 text-sm font-bold border-b-2 transition-all ${activeTab === tab.id
                       ? "border-indigo-500 text-indigo-400"
                       : "border-transparent text-slate-500 hover:text-slate-300"
-                  }`}
+                    }`}
                 >
                   {tab.label}
                 </button>
@@ -373,11 +383,10 @@ export default function CodePreviewPanel({
                         key={i}
                         type="button"
                         onClick={() => setActiveFileIndex(i)}
-                        className={`px-3 py-1.5 rounded-lg text-xs font-mono border transition-all ${
-                          i === activeFileIndex
+                        className={`px-3 py-1.5 rounded-lg text-xs font-mono border transition-all ${i === activeFileIndex
                             ? "bg-indigo-500/12 border-indigo-500/30 text-indigo-400"
                             : "bg-slate-900/30 border-slate-850 text-slate-500 hover:text-slate-300"
-                        }`}
+                          }`}
                       >
                         {f.filename}
                       </button>
@@ -496,11 +505,10 @@ export default function CodePreviewPanel({
                   type="button"
                   onClick={handleRefineSubmit}
                   disabled={!refinePrompt.trim()}
-                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${
-                    refinePrompt.trim()
+                  className={`px-5 py-2.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 ${refinePrompt.trim()
                       ? "bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-600/20"
                       : "bg-slate-900 border border-slate-850 text-slate-600 cursor-not-allowed"
-                  }`}
+                    }`}
                 >
                   Refine UI
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
@@ -528,13 +536,13 @@ export default function CodePreviewPanel({
             </p>
           </div>
         )}
-    </div>
-  );
+      </div>
+      );
 }
 
-const tabs = [
-  { id: "code", label: "Generated Code" },
-  { id: "preview", label: "Live Sandbox" },
-  { id: "schema", label: "Layout Tree Schema" },
-  { id: "tokens", label: "Design Tokens" },
-];
+      const tabs = [
+      {id: "code", label: "Generated Code" },
+      {id: "preview", label: "Live Sandbox" },
+      {id: "schema", label: "Layout Tree Schema" },
+      {id: "tokens", label: "Design Tokens" },
+      ];

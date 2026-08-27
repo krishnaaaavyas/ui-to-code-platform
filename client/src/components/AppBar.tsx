@@ -8,7 +8,7 @@ export default function AppBar() {
   const setDocumentName = useStore((state: any) => state.setDocumentName);
   const saveStatus = useStore((state: any) => state.saveStatus);
   const zoomScale = useStore((state: any) => state.zoomScale);
-  
+
   const rightPanelOpen = useStore((state: any) => state.rightPanelOpen);
   const setRightPanelOpen = useStore((state: any) => state.setRightPanelOpen);
   const inspectorTab = useStore((state: any) => state.inspectorTab);
@@ -42,7 +42,13 @@ export default function AppBar() {
     window.dispatchEvent(new CustomEvent("trigger-zoom-fit"));
   };
 
+  const generateCode = useStore((state: any) => state.generateCode);
+  const inspectSchema = useStore((state: any) => state.inspectSchema);
+  const codePreviewOpen = useStore((state: any) => state.codePreviewOpen);
+  const setCodePreviewOpen = useStore((state: any) => state.setCodePreviewOpen);
+
   const handleGenerateCodeClick = () => {
+
     window.dispatchEvent(new CustomEvent("trigger-generate-code"));
     setInspectorTab("Code");
     setRightPanelOpen(true);
@@ -78,6 +84,13 @@ export default function AppBar() {
       default:
         return null;
     }
+
+    generateCode();
+    setCodePreviewOpen(true);
+  };
+
+  const handleInspectSchemaClick = () => {
+    inspectSchema();
   };
 
   return (
@@ -150,6 +163,7 @@ export default function AppBar() {
         </button>
       </div>
 
+
       {/* Right Section */}
       <div className="app-bar__right flex items-center gap-2">
         <div className="dropdown relative group">
@@ -172,34 +186,71 @@ export default function AppBar() {
             >
               Export as JSON
             </button>
-          </div>
+            {/* Right Zone: View Mode / Code Generation Toggle Controls */}
+            <div className="app-bar__right">
+              {rightContent || (
+                <div className="app-bar__controls">
+                  {user && (
+                    <>
+                      <button
+                        id="app-bar-generate-code-btn"
+                        type="button"
+                        className="app-bar__action-btn app-bar__action-btn--primary"
+                        onClick={handleGenerateCodeClick}
+                        title="Convert design to React + Tailwind code"
+                      >
+                        <span>Generate Code</span>
+                      </button>
+                      <button
+                        id="app-bar-code-preview-toggle"
+                        type="button"
+                        className={`app-bar__action-btn ${codePreviewOpen ? "app-bar__action-btn--primary" : "app-bar__action-btn--secondary"}`}
+                        onClick={() => setCodePreviewOpen(!codePreviewOpen)}
+                        title="Toggle Code View split-screen"
+                      >
+                        <Code size={14} />
+                        <span>{codePreviewOpen ? "Hide Code" : "Show Code"}</span>
+                      </button>
+                      <button
+                        id="app-bar-inspect-schema-btn"
+                        type="button"
+                        className="app-bar__action-btn app-bar__action-btn--secondary"
+                        onClick={handleInspectSchemaClick}
+                        title="Inspect raw UI Schema"
+                      >
+                        <Eye size={14} />
+                        <span>Inspect Schema</span>
+                      </button>
+                    </>
+                  )}
+
+                </div>
         </div>
 
-        <button
-          type="button"
-          onClick={handleToggleCodeDrawer}
-          className={`app-bar__action-btn app-bar__action-btn--secondary py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5 ${
-            rightPanelOpen && inspectorTab === "Code" ? "bg-zinc-800 border-zinc-700 text-white" : ""
-          }`}
-          title="Toggle code preview panel"
-        >
-          <Code size={13} />
-          <span>Code Panel</span>
-        </button>
+            <button
+              type="button"
+              onClick={handleToggleCodeDrawer}
+              className={`app-bar__action-btn app-bar__action-btn--secondary py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5 ${rightPanelOpen && inspectorTab === "Code" ? "bg-zinc-800 border-zinc-700 text-white" : ""
+                }`}
+              title="Toggle code preview panel"
+            >
+              <Code size={13} />
+              <span>Code Panel</span>
+            </button>
 
-        {user && (
-          <button
-            id="app-bar-generate-code-btn"
-            type="button"
-            className="app-bar__action-btn app-bar__action-btn--primary py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5"
-            onClick={handleGenerateCodeClick}
-            title="Convert canvas to live React code"
-          >
-            <Sparkles size={13} className="text-amber-300 animate-pulse" />
-            <span>Generate Code</span>
-          </button>
-        )}
-      </div>
-    </header>
-  );
+            {user && (
+              <button
+                id="app-bar-generate-code-btn"
+                type="button"
+                className="app-bar__action-btn app-bar__action-btn--primary py-1.5 px-3 rounded-lg text-xs flex items-center gap-1.5"
+                onClick={handleGenerateCodeClick}
+                title="Convert canvas to live React code"
+              >
+                <Sparkles size={13} className="text-amber-300 animate-pulse" />
+                <span>Generate Code</span>
+              </button>
+            )}
+          </div>
+        </header>
+        );
 }

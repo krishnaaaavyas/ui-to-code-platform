@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import { getSocket } from "../lib/socket";
+import { generateCodeFromCanvas, refineGeneratedCode } from "../api/ai";
 
 export interface CanvasElement {
   id: string;
@@ -125,6 +126,9 @@ export const useStore = create<any>((set: any, get: any) => ({
   codeGenLoading: false,
   codeGenError: null,
   proposedRefinedResult: null,
+  isSchemaInspectorOpen: false,
+  localSchema: null,
+  codePreviewOpen: false,
 
   // History state
   history: [initialSnapshot],
@@ -629,4 +633,218 @@ export const useStore = create<any>((set: any, get: any) => ({
       if (patch.backgroundColor !== undefined) update.backgroundColor = patch.backgroundColor;
       return update;
     }),
+
+  // AI & Layout Actions
+  setCodePreviewOpen: (open: boolean) => set({ codePreviewOpen: open }),
+  setIsSchemaInspectorOpen: (open: boolean) => set({ isSchemaInspectorOpen: open }),
+  setLocalSchema: (schema: any) => set({ localSchema: schema }),
+
+  addShape: (shapeType: string) => {
+    const { boardWidth, boardHeight, addElement, setActiveTool, selectElement } = get();
+    let newElement: any = {
+      id: `element-${Date.now()}`,
+      visible: true,
+      locked: false,
+      rotation: 0,
+      fill: "#2563eb",
+      stroke: "#1d4ed8",
+      strokeWidth: 3,
+      name: shapeType,
+    };
+
+    if (shapeType === "Circle") {
+      newElement = {
+        ...newElement,
+        type: "circle",
+        x: boardWidth / 2,
+        y: boardHeight / 2,
+        radius: 60,
+      };
+    } else if (shapeType === "Square") {
+      newElement = {
+        ...newElement,
+        type: "rect",
+        x: boardWidth / 2 - 60,
+        y: boardHeight / 2 - 60,
+        width: 120,
+        height: 120,
+      };
+    } else if (shapeType === "Rectangle") {
+      newElement = {
+        ...newElement,
+        type: "rect",
+        x: boardWidth / 2 - 80,
+        y: boardHeight / 2 - 50,
+        width: 160,
+        height: 100,
+      };
+    } else if (shapeType === "Triangle") {
+      newElement = {
+        ...newElement,
+        type: "triangle",
+        x: boardWidth / 2,
+        y: boardHeight / 2,
+        radius: 60,
+      };
+    } else if (shapeType === "Diamond") {
+      newElement = {
+        ...newElement,
+        type: "diamond",
+        x: boardWidth / 2,
+        y: boardHeight / 2,
+        radius: 60,
+      };
+    } else if (shapeType === "Line") {
+      newElement = {
+        ...newElement,
+        type: "line",
+        x: boardWidth / 2 - 80,
+        y: boardHeight / 2 - 5,
+        width: 160,
+        height: 10,
+        fill: "#2563eb",
+        stroke: "#2563eb",
+        strokeWidth: 0,
+      };
+    }
+
+    addElement(newElement);
+    setActiveTool("Shapes");
+    selectElement(newElement.id);
+  },
+
+  addText: (text: string) => {
+    const { boardWidth, boardHeight, addElement, setActiveTool, selectElement } = get();
+    const newElement = {
+      id: `element-${Date.now()}`,
+      type: "text",
+      name: "Text",
+      x: boardWidth / 2 - 160,
+      y: boardHeight / 2 - 20,
+      width: 320,
+      text,
+      fontSize: 20,
+      fill: "#0f172a",
+      visible: true,
+      locked: false,
+    };
+    addElement(newElement);
+    setActiveTool("Text");
+    selectElement(newElement.id);
+  },
+
+  generateCode: async () => {
+    const { elements, boardWidth, boardHeight, backgroundColor } = get();
+    if (elements.length === 0) {
+      set({
+        codeGenError: "Your canvas is empty. Add some shapes, text, or images first.",
+        codePreviewOpen: true,
+      });
+      return;
+    }
+    set({
+      codeGenError: null,
+      codeGenResult: null,
+      proposedRefinedResult: null,
+      codeGenLoading: true,
+      codePreviewOpen: true,
+    });
+    try {
+      const payload = {
+        elements,
+        boardConfig: {
+          boardWidth,
+          boardHeight,
+          backgroundColor,
+        },
+      };
+      const result = await generateCodeFromCanvas(payload);
+      set({ codeGenResult: result });
+    } catch (err: any) {
+      set({ codeGenError: err.message || "Code generation failed. Please try again." });
+    } finally {
+      set({ codeGenLoading: false });
+    }
+  },
+
+  refineCode: async (instruction: string) => {
+    const { codeGenResult } = get();
+    if (!codeGenResult || !codeGenResult.pipeline?.normalizedSchema) {
+      set({ codeGenError: "No active UI schema to refine. Generate code first." });
+      return;
+    }
+    set({
+      codeGenError: null,
+      codeGenLoading: true,
+    });
+    try {
+      const payload = {
+        normalizedSchema: codeGenResult.pipeline.normalizedSchema,
+        files: codeGenResult.generated?.files || [],
+        instruction,
+        stack: "react-tailwind",
+      };
+      const response = await refineGeneratedCode(payload);
+      if (response.success && response.generated) {
+        set({ proposedRefinedResult: response.generated });
+      } else {
+        throw new Error("Invalid response received from code refinement.");
+      }
+    } catch (err: any) {
+      set({ codeGenError: err.message || "Code refinement failed. Please try again." });
+    } finally {
+      set({ codeGenLoading: false });
+    }
+  },
+
+  acceptRefinement: () => {
+    const { proposedRefinedResult, showToast } = get();
+    if (proposedRefinedResult) {
+      set((state: any) => ({
+        codeGenResult: {
+          ...state.codeGenResult,
+          generated: proposedRefinedResult,
+        },
+        proposedRefinedResult: null,
+      }));
+      showToast("Refinement changes applied successfully.", "success");
+    }
+  },
+
+  rejectRefinement: () => {
+    const { showToast } = get();
+    set({ proposedRefinedResult: null });
+    showToast("Refinement changes discarded.", "info");
+  },
+
+  inspectSchema: () => {
+    const { serializeDocument, showToast } = get();
+    const doc = serializeDocument();
+    
+    // Spawn Web Worker dynamically to keep main-thread responsive
+    const worker = new Worker(
+      new URL("../workers/schema.worker.ts", import.meta.url),
+      { type: "module" }
+    );
+    
+    worker.postMessage({ doc });
+    
+    worker.onmessage = (e) => {
+      const { success, schema, error } = e.data;
+      if (success) {
+        set({
+          localSchema: schema,
+          isSchemaInspectorOpen: true,
+        });
+      } else {
+        showToast("Schema extraction failed: " + error, "error");
+      }
+      worker.terminate();
+    };
+
+    worker.onerror = (err) => {
+      showToast("Worker calculation error", "error");
+      worker.terminate();
+    };
+  },
 }));

@@ -65,7 +65,7 @@ export default function ToolDock() {
       setUploading(true);
       showToast("Uploading image...", "info");
 
-      const presignResponse = await getPresignedUrl(file.name, file.type, documentId);
+      const presignResponse = await getPresignedUrl({ filename: file.name, mimeType: file.type, documentId });
       await uploadFileDirectly(presignResponse.uploadUrl, file, file.type);
       await registerAsset({
         documentId,

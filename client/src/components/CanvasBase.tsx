@@ -1,12 +1,9 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
+import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
 import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer, Image as KonvaImage } from "react-konva";
-import SideMenu from "./SideMenu";
-import CodePreviewPanel from "./CodePreviewPanel";
-import Modal from "./Modal";
 import { useStore } from "../store/useStore";
-import { updateDocument } from "../api/documents";
-import { generateCodeFromCanvas, refineGeneratedCode } from "../api/ai";
 import { initSocket, getSocket, disconnectSocket } from "../lib/socket";
+import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
+import { useAutosave } from "../hooks/useAutosave";
 
 interface CanvasImageProps {
   item: any;
@@ -90,12 +87,18 @@ const strokeConfig: Record<string, { strokeWidth: number; lineCap: "round" | "bu
   Line: { strokeWidth: 3, lineCap: "round", stroke: "#2563eb" },
 };
 
-export default function CanvasBase() {
+const CanvasBase = forwardRef((props: any, ref: any) => {
   const boardRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
   const objectRefs = useRef<Record<string, any>>({});
   const lastPinchDistanceRef = useRef(0);
+
+  useImperativeHandle(ref, () => ({
+    exportToPNG,
+    exportToJSON,
+    importJSON: handleImportJSON,
+  }));
 
   const [menuCollapsed, setMenuCollapsed] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
@@ -166,34 +169,12 @@ export default function CanvasBase() {
   const [isSchemaInspectorOpen, setIsSchemaInspectorOpen] = useState(false);
   const [localSchema, setLocalSchema] = useState<any>(null);
 
-  const handleGenerateCode = useCallback(async () => {
-    if (elements.length === 0) {
-      setCodeGenError("Your canvas is empty. Add some shapes, text, or images first.");
-      setCodePreviewOpen(true);
-      return;
-    }
-    setCodeGenError(null);
-    setCodeGenResult(null);
-    setProposedRefinedResult(null);
-    setCodeGenLoading(true);
-    setCodePreviewOpen(true);
-    try {
-      const payload = {
-        elements,
-        boardConfig: {
-          boardWidth,
-          boardHeight,
-          backgroundColor: boardColor,
-        },
-      };
-      const result = await generateCodeFromCanvas(payload);
-      setCodeGenResult(result);
-    } catch (err: any) {
-      setCodeGenError(err.message || "Code generation failed. Please try again.");
-    } finally {
-      setCodeGenLoading(false);
-    }
-  }, [elements, boardWidth, boardHeight, boardColor]);
+  // Custom hooks for keydown shortcuts and autosaving
+  useKeyboardShortcuts();
+  useAutosave(serializeDocument);
+
+
+
 
   const handleRefineCode = useCallback(async (instruction: string) => {
     if (!codeGenResult || !codeGenResult.pipeline?.normalizedSchema) {
@@ -240,15 +221,15 @@ export default function CanvasBase() {
 
   const handleInspectSchema = useCallback(() => {
     const doc = serializeDocument();
-    
+
     // Spawn Web Worker dynamically to keep main-thread responsive
     const worker = new Worker(
       new URL("../workers/schema.worker.ts", import.meta.url),
       { type: "module" }
     );
-    
+
     worker.postMessage({ doc });
-    
+
     worker.onmessage = (e) => {
       const { success, schema, error } = e.data;
       if (success) {
@@ -283,7 +264,7 @@ export default function CanvasBase() {
     };
     const onAcceptRefinement = () => handleAcceptRefinement();
     const onRejectRefinement = () => handleRejectRefinement();
-    
+
     const onZoomIn = () => handleZoomIn();
     const onZoomOut = () => handleZoomOut();
     const onZoomFit = () => handleZoomFit();
@@ -337,6 +318,7 @@ export default function CanvasBase() {
     handleImportJSON,
   ]);
 
+
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
   const [middleMouseDown, setMiddleMouseDown] = useState(false);
@@ -346,8 +328,8 @@ export default function CanvasBase() {
     const handleKeyDownGlobal = (e: KeyboardEvent) => {
       const activeEl = document.activeElement;
       const isInput = activeEl && (
-        activeEl.tagName === "INPUT" || 
-        activeEl.tagName === "TEXTAREA" || 
+        activeEl.tagName === "INPUT" ||
+        activeEl.tagName === "TEXTAREA" ||
         (activeEl as HTMLElement).isContentEditable
       );
       if (isInput) return;
@@ -462,58 +444,7 @@ export default function CanvasBase() {
     }
   };
 
-  // Debounced autosave effect
-  useEffect(() => {
-    if (!user || !documentId || !isDirty) return;
 
-    const timeoutId = setTimeout(async () => {
-      try {
-        setSaveStatus("saving");
-        const payload = {
-          name: documentName,
-          data: serializeDocument(),
-          version: documentVersion,
-          manual: false,
-        };
-        const updatedDoc = await updateDocument(documentId, payload);
-        useStore.setState({
-          isDirty: false,
-          saveStatus: "saved",
-          documentVersion: updatedDoc.version,
-          saveError: null,
-        });
-      } catch (e: any) {
-        console.error("Autosave failed:", e);
-        if (e.status === 409 || e.message === "conflict") {
-          useStore.setState({
-            saveStatus: "conflict",
-            saveError: "Version conflict: This design has been updated elsewhere. Please reload or duplicate.",
-          });
-          showToast("Autosave Conflict: This file was edited elsewhere. Save failed.", "error");
-        } else {
-          useStore.setState({
-            saveStatus: "error",
-            saveError: e.message || "Autosave failed",
-          });
-        }
-      }
-    }, 1500);
-
-    return () => clearTimeout(timeoutId);
-  }, [
-    user,
-    documentId,
-    isDirty,
-    elements,
-    boardWidth,
-    boardHeight,
-    boardColor,
-    documentName,
-    documentVersion,
-    serializeDocument,
-    setSaveStatus,
-    showToast,
-  ]);
 
   // Set up resize observer to keep canvas responsive
   useEffect(() => {
@@ -561,103 +492,14 @@ export default function CanvasBase() {
     }
   }, [selectedElementId, elements]);
 
-  // Keyboard shortcuts for Undo/Redo and Delete Selected
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      const isInput = activeEl && (
-        activeEl.tagName === "INPUT" || 
-        activeEl.tagName === "TEXTAREA" || 
-        (activeEl as HTMLElement).isContentEditable
-      );
 
-      if (isInput) return;
-
-      const isMac = navigator.platform.toUpperCase().indexOf("MAC") >= 0;
-      const cmdOrCtrl = isMac ? e.metaKey : e.ctrlKey;
-
-      if (cmdOrCtrl && e.key.toLowerCase() === "z") {
-        e.preventDefault();
-        if (userRole === "viewer") return;
-        if (e.shiftKey) {
-          useStore.getState().redo();
-          const socket = getSocket();
-          if (socket && socket.connected) {
-            socket.emit("element.op", {
-              documentId,
-              op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
-            });
-          }
-        } else {
-          useStore.getState().undo();
-          const socket = getSocket();
-          if (socket && socket.connected) {
-            socket.emit("element.op", {
-              documentId,
-              op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
-            });
-          }
-        }
-      } else if (cmdOrCtrl && e.key.toLowerCase() === "y") {
-        e.preventDefault();
-        if (userRole === "viewer") return;
-        useStore.getState().redo();
-        const socket = getSocket();
-        if (socket && socket.connected) {
-          socket.emit("element.op", {
-            documentId,
-            op: { type: "canvas.update", payload: { elements: useStore.getState().elements } }
-          });
-        }
-      } else if (cmdOrCtrl && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        if (userRole === "viewer") return;
-        if (selectedElementId) {
-          useStore.getState().duplicateElement(selectedElementId);
-        }
-      } else if (e.key === "Delete" || e.key === "Backspace") {
-        if (userRole === "viewer") return;
-        if (selectedElementId) {
-          e.preventDefault();
-          deleteElement(selectedElementId);
-        }
-      } else if (e.key === "Escape") {
-        e.preventDefault();
-        selectElement(null);
-        setDraftElement(null);
-        setIsDrawing(false);
-      } else if (!cmdOrCtrl) {
-        if (e.key.toLowerCase() === "v") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Shapes");
-        } else if (e.key.toLowerCase() === "t") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Text");
-        } else if (e.key.toLowerCase() === "p") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Stroke");
-        } else if (e.key.toLowerCase() === "b") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Background");
-        } else if (e.key.toLowerCase() === "d") {
-          e.preventDefault();
-          useStore.getState().setActiveTool("Designs");
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [selectedElementId, deleteElement, selectElement, setDraftElement, setIsDrawing, userRole, documentId]);
 
   const exportToPNG = () => {
     const stage = stageRef.current;
     if (!stage) return;
     const originalSelected = selectedElementId;
     selectElement(null);
-    
+
     setTimeout(() => {
       const dataUrl = stage.toDataURL({ pixelRatio: 2 });
       const link = document.createElement("a");
@@ -816,6 +658,7 @@ export default function CanvasBase() {
     zoomAtPoint(centerPoint, nextScale);
   };
 
+
   const handleZoomFit = () => {
     setScale(1);
     const parent = boardRef.current?.parentElement;
@@ -935,6 +778,7 @@ export default function CanvasBase() {
     setActiveTool("Text");
     selectElement(newElement.id);
   };
+
 
   const changeBackground = (color: string) => {
     setBackgroundColor(color);
@@ -1246,6 +1090,8 @@ export default function CanvasBase() {
       text={item.text}
       width={item.width}
       fontSize={item.fontSize}
+      fontFamily={item.fontFamily}
+      fontStyle={item.fontWeight}
       fill={item.fill || "#000"}
       draggable={!item.locked && userRole !== "viewer"}
       onDragMove={(e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false)}
@@ -1498,6 +1344,7 @@ export default function CanvasBase() {
               draggable={spacePressed || middleMouseDown}
               style={{ cursor: spacePressed ? (middleMouseDown ? "grabbing" : "grab") : "default" }}
               onWheel={handleWheel}
+              onWheelZ={handleWheel}
               onTouchMove={handleTouchMove}
               onTouchEnd={handleStageTouchEnd}
               onMouseDown={(e: any) => {
@@ -1615,65 +1462,9 @@ export default function CanvasBase() {
 
 
         </div>
-
-        {/* Schema Inspector Modal */}
-        {isSchemaInspectorOpen && (
-          <Modal
-            title={
-              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-                <div
-                  style={{
-                    width: "30px",
-                    height: "30px",
-                    borderRadius: "8px",
-                    background: "rgba(99,102,241,0.15)",
-                    display: "flex",
-                    alignItems: "center",
-                    justifyContent: "center",
-                  }}
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5">
-                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                  </svg>
-                </div>
-                <span style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-primary)" }}>
-                  UI Schema Inspector
-                </span>
-              </div>
-            }
-            onClose={() => setIsSchemaInspectorOpen(false)}
-            footer={
-              <button
-                type="button"
-                className="side-menu__btn-secondary"
-                onClick={() => setIsSchemaInspectorOpen(false)}
-              >
-                Close
-              </button>
-            }
-          >
-            <p style={{ margin: "0 0 12px", fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5" }}>
-              This is the raw, frontend-extracted semantic AST generated by the canvas transformer. It is normalized and enriched downstream by the AI generation pipeline.
-            </p>
-            <pre
-              style={{
-                margin: 0,
-                padding: "14px",
-                background: "var(--bg)",
-                border: "1px solid var(--border)",
-                borderRadius: "var(--radius-sm)",
-                fontSize: "11px",
-                color: "var(--text-primary)",
-                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
-                overflowX: "auto",
-                maxHeight: "380px",
-              }}
-            >
-              {JSON.stringify(localSchema, null, 2)}
-            </pre>
-          </Modal>
-        )}
       </div>
     </section>
   );
-}
+});
+
+export default CanvasBase;
