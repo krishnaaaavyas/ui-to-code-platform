@@ -117,6 +117,15 @@ export const useStore = create<any>((set: any, get: any) => ({
   transformingId: null,
   draftElement: null,
 
+  // Figma-style workspace layout and code preview states
+  rightPanelOpen: true,
+  inspectorTab: "Design",
+  zoomScale: 1,
+  codeGenResult: null,
+  codeGenLoading: false,
+  codeGenError: null,
+  proposedRefinedResult: null,
+
   // History state
   history: [initialSnapshot],
   historyIndex: 0,
@@ -192,6 +201,13 @@ export const useStore = create<any>((set: any, get: any) => ({
   setEditingTextId: (id: string | null) => set({ editingTextId: id }),
   setTransformingId: (id: string | null) => set({ transformingId: id }),
   setDraftElement: (draft: any) => set({ draftElement: draft }),
+  setRightPanelOpen: (open: boolean) => set({ rightPanelOpen: open }),
+  setInspectorTab: (tab: string) => set({ inspectorTab: tab }),
+  setZoomScale: (zoomScale: number) => set({ zoomScale }),
+  setCodeGenResult: (result: any) => set({ codeGenResult: result }),
+  setCodeGenLoading: (loading: boolean) => set({ codeGenLoading: loading }),
+  setCodeGenError: (error: string | null) => set({ codeGenError: error }),
+  setProposedRefinedResult: (result: any) => set({ proposedRefinedResult: result }),
 
   // Document metadata actions
   setDocumentName: (name: string) => set({ documentName: name, isDirty: true, saveStatus: "idle" }),

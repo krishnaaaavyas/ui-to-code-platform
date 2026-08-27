@@ -99,8 +99,14 @@ export default function CanvasBase() {
 
   const [menuCollapsed, setMenuCollapsed] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
-  const [scale, setScale] = useState(1);
+  const [scale, setScaleState] = useState(1);
   const [position, setPosition] = useState({ x: 0, y: 0 });
+
+  const setZoomScale = useStore((state: any) => state.setZoomScale);
+  const setScale = useCallback((s: number) => {
+    setScaleState(s);
+    setZoomScale(s);
+  }, [setZoomScale]);
 
   const boardWidth = useStore((state: any) => state.boardWidth);
   const boardHeight = useStore((state: any) => state.boardHeight);
@@ -143,12 +149,20 @@ export default function CanvasBase() {
   const [collaborators, setCollaborators] = useState<any[]>([]);
   const lastCursorEmitRef = useRef(0);
 
-  // ── Design-to-Code state ──────────────────────────────────────────────
-  const [codePreviewOpen, setCodePreviewOpen] = useState(false);
-  const [codeGenLoading, setCodeGenLoading] = useState(false);
-  const [codeGenResult, setCodeGenResult] = useState<any>(null);
-  const [proposedRefinedResult, setProposedRefinedResult] = useState<any>(null);
-  const [codeGenError, setCodeGenError] = useState<string | null>(null);
+  // ── Design-to-Code state (linked to Zustand store) ────────────────────────────────
+  const codePreviewOpen = useStore((state: any) => state.rightPanelOpen && state.inspectorTab === "Code");
+  const setCodePreviewOpen = (open: boolean) => {
+    useStore.getState().setRightPanelOpen(open);
+    if (open) useStore.getState().setInspectorTab("Code");
+  };
+  const codeGenResult = useStore((state: any) => state.codeGenResult);
+  const setCodeGenResult = useStore((state: any) => state.setCodeGenResult);
+  const codeGenLoading = useStore((state: any) => state.codeGenLoading);
+  const setCodeGenLoading = useStore((state: any) => state.setCodeGenLoading);
+  const codeGenError = useStore((state: any) => state.codeGenError);
+  const setCodeGenError = useStore((state: any) => state.setCodeGenError);
+  const proposedRefinedResult = useStore((state: any) => state.proposedRefinedResult);
+  const setProposedRefinedResult = useStore((state: any) => state.setProposedRefinedResult);
   const [isSchemaInspectorOpen, setIsSchemaInspectorOpen] = useState(false);
   const [localSchema, setLocalSchema] = useState<any>(null);
 
@@ -259,15 +273,69 @@ export default function CanvasBase() {
       const shape = (e as CustomEvent<{ shape: string }>).detail?.shape;
       if (shape) addShape(shape);
     };
+    const onAddText = (e: Event) => {
+      const text = (e as CustomEvent<{ text: string }>).detail?.text;
+      addText(text || "Double click to edit");
+    };
+    const onRefine = (e: Event) => {
+      const prompt = (e as CustomEvent<{ prompt: string }>).detail?.prompt;
+      if (prompt) handleRefineCode(prompt);
+    };
+    const onAcceptRefinement = () => handleAcceptRefinement();
+    const onRejectRefinement = () => handleRejectRefinement();
+    
+    const onZoomIn = () => handleZoomIn();
+    const onZoomOut = () => handleZoomOut();
+    const onZoomFit = () => handleZoomFit();
+
+    const onExportPNG = () => exportToPNG();
+    const onExportJSON = () => exportToJSON();
+    const onImportJSON = (e: Event) => {
+      const changeEvent = (e as CustomEvent).detail;
+      if (changeEvent) handleImportJSON(changeEvent);
+    };
+
     window.addEventListener("trigger-generate-code", onGenerate);
     window.addEventListener("trigger-inspect-schema", onInspect);
     window.addEventListener("trigger-add-shape", onAddShape);
+    window.addEventListener("trigger-add-text", onAddText);
+    window.addEventListener("trigger-refine-code", onRefine);
+    window.addEventListener("trigger-accept-refinement", onAcceptRefinement);
+    window.addEventListener("trigger-reject-refinement", onRejectRefinement);
+    window.addEventListener("trigger-zoom-in", onZoomIn);
+    window.addEventListener("trigger-zoom-out", onZoomOut);
+    window.addEventListener("trigger-zoom-fit", onZoomFit);
+    window.addEventListener("trigger-export-png", onExportPNG);
+    window.addEventListener("trigger-export-json", onExportJSON);
+    window.addEventListener("trigger-import-json", onImportJSON);
+
     return () => {
       window.removeEventListener("trigger-generate-code", onGenerate);
       window.removeEventListener("trigger-inspect-schema", onInspect);
       window.removeEventListener("trigger-add-shape", onAddShape);
+      window.removeEventListener("trigger-add-text", onAddText);
+      window.removeEventListener("trigger-refine-code", onRefine);
+      window.removeEventListener("trigger-accept-refinement", onAcceptRefinement);
+      window.removeEventListener("trigger-reject-refinement", onRejectRefinement);
+      window.removeEventListener("trigger-zoom-in", onZoomIn);
+      window.removeEventListener("trigger-zoom-out", onZoomOut);
+      window.removeEventListener("trigger-zoom-fit", onZoomFit);
+      window.removeEventListener("trigger-export-png", onExportPNG);
+      window.removeEventListener("trigger-export-json", onExportJSON);
+      window.removeEventListener("trigger-import-json", onImportJSON);
     };
-  }, [handleGenerateCode, handleInspectSchema]);
+  }, [
+    handleGenerateCode,
+    handleInspectSchema,
+    addShape,
+    addText,
+    handleRefineCode,
+    handleAcceptRefinement,
+    handleRejectRefinement,
+    exportToPNG,
+    exportToJSON,
+    handleImportJSON,
+  ]);
 
   // Canvas panning state
   const [spacePressed, setSpacePressed] = useState(false);
@@ -748,6 +816,21 @@ export default function CanvasBase() {
     zoomAtPoint(centerPoint, nextScale);
   };
 
+  const handleZoomFit = () => {
+    setScale(1);
+    const parent = boardRef.current?.parentElement;
+    if (parent) {
+      const containerWidth = parent.clientWidth;
+      const containerHeight = parent.clientHeight;
+      setPosition({
+        x: Math.round((containerWidth - boardWidth) / 2),
+        y: Math.round((containerHeight - boardHeight) / 2)
+      });
+    } else {
+      setPosition({ x: 0, y: 0 });
+    }
+  };
+
   const addShape = (shapeType: string) => {
     let newElement: any = {
       id: `element-${Date.now()}`,
@@ -813,6 +896,19 @@ export default function CanvasBase() {
         fill: "#2563eb",
         stroke: "#2563eb",
         strokeWidth: 0,
+      };
+    } else if (shapeType === "Frame") {
+      newElement = {
+        ...newElement,
+        type: "rect",
+        x: boardWidth / 2 - 150,
+        y: boardHeight / 2 - 100,
+        width: 300,
+        height: 200,
+        fill: "transparent",
+        stroke: "#a1a1aa",
+        strokeWidth: 2,
+        name: "Frame",
       };
     }
 
@@ -1281,52 +1377,6 @@ export default function CanvasBase() {
   return (
     <section className="canvas-base">
       <div className="canvas-workspace">
-        <SideMenu
-          collapsed={menuCollapsed}
-          onToggle={() => setMenuCollapsed((prev) => !prev)}
-          boardWidth={boardWidth}
-          boardHeight={boardHeight}
-          onBoardWidthChange={updateBoardWidth}
-          onBoardHeightChange={updateBoardHeight}
-          activeTool={activeTool}
-          onToolChange={setActiveTool}
-          onAddShape={addShape}
-          onAddText={addText}
-          backgroundColor={boardColor}
-          onBackgroundChange={changeBackground}
-          selectedStroke={selectedStroke}
-          onStrokeChange={(shape) => {
-            setSelectedStroke(shape);
-            setActiveTool("Stroke");
-          }}
-          selectedItem={selectedItem}
-          onDeleteSelected={() => {
-            if (!selectedElementId) return;
-            deleteElement(selectedElementId);
-          }}
-          onChangeSelectedColor={(color) => {
-            if (!selectedElementId) return;
-            updateElement(selectedElementId, { fill: color, stroke: color }, true);
-          }}
-          onExportPNG={exportToPNG}
-          onExportJSON={exportToJSON}
-          onImportJSON={handleImportJSON}
-        />
-
-        {/* ── Code Preview Panel (slide-over drawer) ── */}
-        <CodePreviewPanel
-          isOpen={codePreviewOpen}
-          onClose={() => setCodePreviewOpen(false)}
-          result={codeGenResult}
-          proposedRefinedResult={proposedRefinedResult}
-          isLoading={codeGenLoading}
-          error={codeGenError}
-          onRefine={handleRefineCode}
-          onRegenerate={handleGenerateCode}
-          onAcceptRefinement={handleAcceptRefinement}
-          onRejectRefinement={handleRejectRefinement}
-        />
-
         <div ref={boardRef} className="canvas-base__board">
           {/* Live Collaborators Avatars (Top Right Canvas Overlay) */}
           {collaborators.length > 0 && (
@@ -1563,15 +1613,7 @@ export default function CanvasBase() {
             );
           })()}
 
-          <div className="canvas-base__zoom-panel">
-            <button type="button" className="zoom-btn" onClick={handleZoomOut}>
-              -
-            </button>
-            <span className="canvas-base__zoom-badge">{Math.round(scale * 100)}%</span>
-            <button type="button" className="zoom-btn" onClick={handleZoomIn}>
-              +
-            </button>
-          </div>
+
         </div>
 
         {/* Schema Inspector Modal */}

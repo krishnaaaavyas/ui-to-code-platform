@@ -1095,47 +1095,16 @@ interface SideMenuProps {
 export default function SideMenu({
   collapsed,
   onToggle,
-  boardWidth,
-  boardHeight,
-  onBoardWidthChange,
-  onBoardHeightChange,
-  activeTool,
-  onToolChange,
-  onAddShape,
-  onAddText,
-  backgroundColor,
-  onBackgroundChange,
-  selectedStroke,
-  onStrokeChange,
-  selectedItem,
-  onDeleteSelected,
-  onChangeSelectedColor,
   onExportPNG,
   onExportJSON,
   onImportJSON,
 }: SideMenuProps) {
-  const [activeShape, setActiveShape] = useState<string | null>(null);
-  const userRole = useStore((state: any) => state.userRole);
+  const [activeLeftTab, setActiveLeftTab] = React.useState<"Layers" | "Designs">("Layers");
+  const menuCollapsed = useStore((state: any) => state.menuCollapsed);
+  const setMenuCollapsed = useStore((state: any) => state.setMenuCollapsed);
 
   const renderToolPanel = () => {
-    switch (activeTool) {
-      case "Shapes":
-        return (
-          <ShapesPanel
-            activeShape={activeShape}
-            onAddShape={onAddShape}
-            onChangeActiveShape={setActiveShape}
-            selectedItem={selectedItem}
-            onDeleteSelected={onDeleteSelected}
-            onChangeSelectedColor={onChangeSelectedColor}
-          />
-        );
-      case "Text":
-        return <TextPanel onAddText={onAddText} />;
-      case "Background":
-        return <BackgroundPanel backgroundColor={backgroundColor} onBackgroundChange={onBackgroundChange} />;
-      case "Stroke":
-        return <StrokePanel selectedStroke={selectedStroke} onStrokeChange={onStrokeChange} />;
+    switch (activeLeftTab) {
       case "Layers":
         return <LayersPanel />;
       case "Designs":
@@ -1152,83 +1121,57 @@ export default function SideMenu({
   };
 
   return (
-    <aside className={`side-menu ${collapsed ? "side-menu--collapsed" : ""}`}>
-      <div className="side-menu__top">
-        <div className="side-menu__header">
-          {!collapsed && <span className="side-menu__label">Tools</span>}
-
+    <aside className={`side-menu ${menuCollapsed ? "side-menu--collapsed" : ""}`}>
+      {/* Sticky Tab Header */}
+      {!menuCollapsed && (
+        <div className="side-menu__tab-header flex border-b border-zinc-800 bg-zinc-950 flex-shrink-0" style={{ height: "36px" }}>
+          <button
+            onClick={() => setActiveLeftTab("Layers")}
+            className={`flex-1 text-center text-xs font-semibold border-b-2 transition-colors ${
+              activeLeftTab === "Layers"
+                ? "border-indigo-500 text-white"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Layers
+          </button>
+          <button
+            onClick={() => setActiveLeftTab("Designs")}
+            className={`flex-1 text-center text-xs font-semibold border-b-2 transition-colors ${
+              activeLeftTab === "Designs"
+                ? "border-indigo-500 text-white"
+                : "border-transparent text-zinc-400 hover:text-zinc-200"
+            }`}
+          >
+            Pages
+          </button>
           <button
             type="button"
-            className="side-menu__toggle"
-            onClick={onToggle}
-            aria-label={collapsed ? "Open side menu" : "Collapse side menu"}
+            className="w-8 h-8 flex items-center justify-center text-zinc-500 hover:text-white transition-colors"
+            onClick={() => setMenuCollapsed(true)}
+            title="Collapse Sidebar"
           >
-            {collapsed ? "+" : "✕"}
+            ✕
           </button>
         </div>
+      )}
 
-        {!collapsed && (
-          <div className="side-menu__body">
-            <div className="tool-rail">
-              {toolOptions.map((tool) => {
-                const Icon = tool.icon;
-                const isActive = activeTool === tool.name;
-                return (
-                  <button
-                    key={tool.name}
-                    type="button"
-                    className={`tool-rail__item ${isActive ? "tool-rail__item--active" : ""}`}
-                    onClick={() => {
-                      onToolChange(tool.name);
-                      if (tool.name !== "Shapes") {
-                        setActiveShape(null);
-                      }
-                    }}
-                    title={tool.name}
-                    aria-label={tool.name}
-                  >
-                    <Icon size={18} />
-                  </button>
-                );
-              })}
-            </div>
+      {menuCollapsed && (
+        <div className="side-menu__collapsed-trigger p-2 text-center">
+          <button
+            type="button"
+            onClick={() => setMenuCollapsed(false)}
+            className="w-8 h-8 rounded bg-zinc-900 border border-zinc-850 hover:bg-zinc-800 text-zinc-400 hover:text-white transition-all font-bold"
+            title="Expand Sidebar"
+          >
+            +
+          </button>
+        </div>
+      )}
 
-            <div className="side-menu__content">{renderToolPanel()}</div>
-          </div>
-        )}
-      </div>
-
-      {!collapsed && (
-        <div className="side-menu__footer">
-          <div className="side-menu__panel side-menu__board-size">
-            <p className="side-menu__panel-title">Board Size</p>
-
-            <label className="side-menu__field">
-              <span>Width</span>
-              <input
-                type="number"
-                min="600"
-                max="5000"
-                step="50"
-                disabled={userRole === "viewer"}
-                value={boardWidth}
-                onChange={(e) => onBoardWidthChange(Number(e.target.value))}
-              />
-            </label>
-
-            <label className="side-menu__field">
-              <span>Height</span>
-              <input
-                type="number"
-                min="400"
-                max="5000"
-                step="50"
-                disabled={userRole === "viewer"}
-                value={boardHeight}
-                onChange={(e) => onBoardHeightChange(Number(e.target.value))}
-              />
-            </label>
-          </div>
+      {!menuCollapsed && (
+        <div className="side-menu__content flex-1 overflow-y-auto">
+          {renderToolPanel()}
         </div>
       )}
     </aside>

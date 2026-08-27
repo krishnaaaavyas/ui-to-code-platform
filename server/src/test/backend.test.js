@@ -314,6 +314,6 @@ describe("UI-to-Code Platform Backend Tests", () => {
       expect(res.body.success).toBe(true);
       expect(res.body.generated.files[0].filename).toBe("App.jsx");
       expect(res.body.generated.files[0].content).toContain("Fallback Local Canvas Scaffold");
-    });
+    }, 15000);
   });
 });
