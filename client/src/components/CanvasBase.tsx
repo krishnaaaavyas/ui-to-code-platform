@@ -1,6 +1,11 @@
-import React, { useEffect, useRef, useState, useCallback, forwardRef, useImperativeHandle } from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { Circle, Layer, Line, Rect, RegularPolygon, Stage, Text, Transformer, Image as KonvaImage } from "react-konva";
+import SideMenu from "./SideMenu";
+import CodePreviewPanel from "./CodePreviewPanel";
+import Modal from "./Modal";
 import { useStore } from "../store/useStore";
+import { updateDocument } from "../api/documents";
+import { generateCodeFromCanvas, refineGeneratedCode } from "../api/ai";
 import { initSocket, getSocket, disconnectSocket } from "../lib/socket";
 import { useKeyboardShortcuts } from "../hooks/useKeyboardShortcuts";
 import { useAutosave } from "../hooks/useAutosave";
@@ -42,8 +47,8 @@ function CanvasImage({
       image={imgNode || undefined}
       x={item.x}
       y={item.y}
-      width={item.width || 200}
-      height={item.height || 200}
+      width={item.width}
+      height={item.height}
       rotation={item.rotation || 0}
       draggable={!isLocked}
       onClick={onSelect}
@@ -56,49 +61,16 @@ function CanvasImage({
   );
 }
 
-const MIN_SCALE = 0.4;
-const MAX_SCALE = 3;
-const SCALE_STEP = 1.12;
-const MIN_BOARD_WIDTH = 600;
-const MIN_BOARD_HEIGHT = 400;
+const MIN_SCALE = 0.1;
+const MAX_SCALE = 10;
+const SCALE_STEP = 1.1;
 
-function clamp(value: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, value));
-}
-
-function getDistance(touch1: Touch, touch2: Touch) {
-  return Math.hypot(
-    touch2.clientX - touch1.clientX,
-    touch2.clientY - touch1.clientY
-  );
-}
-
-function getCenter(touch1: Touch, touch2: Touch) {
-  return {
-    x: (touch1.clientX + touch2.clientX) / 2,
-    y: (touch1.clientY + touch2.clientY) / 2,
-  };
-}
-
-const strokeConfig: Record<string, { strokeWidth: number; lineCap: "round" | "butt" | "square"; stroke: string }> = {
-  Pen: { strokeWidth: 2, lineCap: "round", stroke: "#0f172a" },
-  Pencil: { strokeWidth: 1.5, lineCap: "round", stroke: "#334155" },
-  Brush: { strokeWidth: 6, lineCap: "round", stroke: "#1d4ed8" },
-  Line: { strokeWidth: 3, lineCap: "round", stroke: "#2563eb" },
-};
-
-const CanvasBase = forwardRef((props: any, ref: any) => {
+export default function CanvasBase() {
   const boardRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<any>(null);
   const transformerRef = useRef<any>(null);
   const objectRefs = useRef<Record<string, any>>({});
   const lastPinchDistanceRef = useRef(0);
-
-  useImperativeHandle(ref, () => ({
-    exportToPNG,
-    exportToJSON,
-    importJSON: handleImportJSON,
-  }));
 
   const [menuCollapsed, setMenuCollapsed] = useState(false);
   const [stageSize, setStageSize] = useState({ width: 0, height: 0 });
@@ -173,9 +145,6 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
   useKeyboardShortcuts();
   useAutosave(serializeDocument);
 
-
-
-
   const handleRefineCode = useCallback(async (instruction: string) => {
     if (!codeGenResult || !codeGenResult.pipeline?.normalizedSchema) {
       setCodeGenError("No active UI schema to refine. Generate code first.");
@@ -201,7 +170,7 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     } finally {
       setCodeGenLoading(false);
     }
-  }, [codeGenResult]);
+  }, [codeGenResult, setCodeGenError, setCodeGenLoading, setProposedRefinedResult]);
 
   const handleAcceptRefinement = useCallback(() => {
     if (proposedRefinedResult) {
@@ -212,24 +181,24 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
       setProposedRefinedResult(null);
       showToast("Refinement changes applied successfully.", "success");
     }
-  }, [proposedRefinedResult, showToast]);
+  }, [proposedRefinedResult, setCodeGenResult, setProposedRefinedResult, showToast]);
 
   const handleRejectRefinement = useCallback(() => {
     setProposedRefinedResult(null);
     showToast("Refinement changes discarded.", "info");
-  }, [showToast]);
+  }, [setProposedRefinedResult, showToast]);
 
   const handleInspectSchema = useCallback(() => {
     const doc = serializeDocument();
-
+    
     // Spawn Web Worker dynamically to keep main-thread responsive
     const worker = new Worker(
       new URL("../workers/schema.worker.ts", import.meta.url),
       { type: "module" }
     );
-
+    
     worker.postMessage({ doc });
-
+    
     worker.onmessage = (e) => {
       const { success, schema, error } = e.data;
       if (success) {
@@ -247,259 +216,164 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     };
   }, [serializeDocument, showToast]);
 
-  useEffect(() => {
-    const onGenerate = () => handleGenerateCode();
-    const onInspect = () => handleInspectSchema();
-    const onAddShape = (e: Event) => {
-      const shape = (e as CustomEvent<{ shape: string }>).detail?.shape;
-      if (shape) addShape(shape);
-    };
-    const onAddText = (e: Event) => {
-      const text = (e as CustomEvent<{ text: string }>).detail?.text;
-      addText(text || "Double click to edit");
-    };
-    const onRefine = (e: Event) => {
-      const prompt = (e as CustomEvent<{ prompt: string }>).detail?.prompt;
-      if (prompt) handleRefineCode(prompt);
-    };
-    const onAcceptRefinement = () => handleAcceptRefinement();
-    const onRejectRefinement = () => handleRejectRefinement();
-
-    const onZoomIn = () => handleZoomIn();
-    const onZoomOut = () => handleZoomOut();
-    const onZoomFit = () => handleZoomFit();
-
-    const onExportPNG = () => exportToPNG();
-    const onExportJSON = () => exportToJSON();
-    const onImportJSON = (e: Event) => {
-      const changeEvent = (e as CustomEvent).detail;
-      if (changeEvent) handleImportJSON(changeEvent);
-    };
-
-    window.addEventListener("trigger-generate-code", onGenerate);
-    window.addEventListener("trigger-inspect-schema", onInspect);
-    window.addEventListener("trigger-add-shape", onAddShape);
-    window.addEventListener("trigger-add-text", onAddText);
-    window.addEventListener("trigger-refine-code", onRefine);
-    window.addEventListener("trigger-accept-refinement", onAcceptRefinement);
-    window.addEventListener("trigger-reject-refinement", onRejectRefinement);
-    window.addEventListener("trigger-zoom-in", onZoomIn);
-    window.addEventListener("trigger-zoom-out", onZoomOut);
-    window.addEventListener("trigger-zoom-fit", onZoomFit);
-    window.addEventListener("trigger-export-png", onExportPNG);
-    window.addEventListener("trigger-export-json", onExportJSON);
-    window.addEventListener("trigger-import-json", onImportJSON);
-
-    return () => {
-      window.removeEventListener("trigger-generate-code", onGenerate);
-      window.removeEventListener("trigger-inspect-schema", onInspect);
-      window.removeEventListener("trigger-add-shape", onAddShape);
-      window.removeEventListener("trigger-add-text", onAddText);
-      window.removeEventListener("trigger-refine-code", onRefine);
-      window.removeEventListener("trigger-accept-refinement", onAcceptRefinement);
-      window.removeEventListener("trigger-reject-refinement", onRejectRefinement);
-      window.removeEventListener("trigger-zoom-in", onZoomIn);
-      window.removeEventListener("trigger-zoom-out", onZoomOut);
-      window.removeEventListener("trigger-zoom-fit", onZoomFit);
-      window.removeEventListener("trigger-export-png", onExportPNG);
-      window.removeEventListener("trigger-export-json", onExportJSON);
-      window.removeEventListener("trigger-import-json", onImportJSON);
-    };
-  }, [
-    handleGenerateCode,
-    handleInspectSchema,
-    addShape,
-    addText,
-    handleRefineCode,
-    handleAcceptRefinement,
-    handleRejectRefinement,
-    exportToPNG,
-    exportToJSON,
-    handleImportJSON,
-  ]);
-
-
-  // Canvas panning state
-  const [spacePressed, setSpacePressed] = useState(false);
-  const [middleMouseDown, setMiddleMouseDown] = useState(false);
-
-  // Track spacebar keypresses globally for canvas panning
-  useEffect(() => {
-    const handleKeyDownGlobal = (e: KeyboardEvent) => {
-      const activeEl = document.activeElement;
-      const isInput = activeEl && (
-        activeEl.tagName === "INPUT" ||
-        activeEl.tagName === "TEXTAREA" ||
-        (activeEl as HTMLElement).isContentEditable
-      );
-      if (isInput) return;
-
-      if (e.key === " ") {
-        e.preventDefault();
-        setSpacePressed(true);
-      }
-    };
-
-    const handleKeyUpGlobal = (e: KeyboardEvent) => {
-      if (e.key === " ") {
-        setSpacePressed(false);
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDownGlobal);
-    window.addEventListener("keyup", handleKeyUpGlobal);
-    return () => {
-      window.removeEventListener("keydown", handleKeyDownGlobal);
-      window.removeEventListener("keyup", handleKeyUpGlobal);
-    };
-  }, []);
-
-  // Socket.IO Room Connection and Events synchronization
-  useEffect(() => {
-    if (!documentId || !accessToken) {
-      setCollaborators([]);
-      disconnectSocket();
+  const handleGenerateCode = useCallback(async () => {
+    if (elements.length === 0) {
+      setCodeGenError("Your canvas is empty. Add some shapes, text, or images first.");
+      setCodePreviewOpen(true);
       return;
     }
-
-    const socket = initSocket(accessToken);
-
-    socket.on("connect", () => {
-      socket.emit("join-room", { documentId });
-    });
-
-    socket.on("error-msg", (data: any) => {
-      showToast(data.message, "error");
-    });
-
-    socket.on("room.users", (users: any[]) => {
-      const others = users.filter((u) => u.socketId !== socket.id);
-      setCollaborators(others);
-    });
-
-    socket.on("user.joined", ({ socketId, user: joinedUser }: any) => {
-      setCollaborators((prev) => {
-        const exists = prev.some((u) => u.socketId === socketId);
-        if (exists) return prev;
-        return [...prev, { socketId, user: joinedUser, cursor: null, selectedElementId: null }];
-      });
-    });
-
-    socket.on("user.left", ({ socketId }: any) => {
-      setCollaborators((prev) => prev.filter((u) => u.socketId !== socketId));
-    });
-
-    socket.on("cursor.move", ({ socketId, x, y }: any) => {
-      setCollaborators((prev) =>
-        prev.map((u) => (u.socketId === socketId ? { ...u, cursor: { x, y } } : u))
-      );
-    });
-
-    socket.on("selection.set", ({ socketId, elementId }: any) => {
-      setCollaborators((prev) =>
-        prev.map((u) => (u.socketId === socketId ? { ...u, selectedElementId: elementId } : u))
-      );
-    });
-
-    socket.on("element.op", (op: any) => {
-      const { type, payload } = op;
-      if (type === "element.add") {
-        useStore.getState().remoteAddElement(payload);
-      } else if (type === "element.update") {
-        useStore.getState().remoteUpdateElement(payload.id, payload.patch);
-      } else if (type === "element.delete") {
-        useStore.getState().remoteDeleteElement(payload.id);
-      } else if (type === "element.reorder") {
-        useStore.getState().remoteReorderElements(payload.from, payload.to);
-      } else if (type === "canvas.update") {
-        if (payload.elements !== undefined) {
-          useStore.setState({ elements: payload.elements });
-        }
-        useStore.getState().remoteUpdateBoard(payload);
-      }
-    });
-
-    return () => {
-      disconnectSocket();
-    };
-  }, [documentId, accessToken, showToast]);
-
-  // Emit selection set on active element changes
-  useEffect(() => {
-    const socket = getSocket();
-    if (socket && socket.connected && documentId) {
-      socket.emit("selection.set", { documentId, elementId: selectedElementId });
+    setCodeGenError(null);
+    setCodeGenResult(null);
+    setProposedRefinedResult(null);
+    setCodeGenLoading(true);
+    setCodePreviewOpen(true);
+    try {
+      const payload = {
+        elements,
+        boardConfig: {
+          boardWidth,
+          boardHeight,
+          backgroundColor: boardColor,
+        },
+      };
+      const result = await generateCodeFromCanvas(payload);
+      setCodeGenResult(result);
+    } catch (err: any) {
+      setCodeGenError(err.message || "Code generation failed. Please try again.");
+    } finally {
+      setCodeGenLoading(false);
     }
-  }, [selectedElementId, documentId]);
+  }, [elements, boardWidth, boardHeight, boardColor, setCodeGenError, setCodeGenResult, setProposedRefinedResult, setCodeGenLoading, setCodePreviewOpen]);
 
-  // Throttled cursor emission
-  const emitCursorMove = (x: number, y: number) => {
-    const now = Date.now();
-    if (now - lastCursorEmitRef.current > 50) {
-      const socket = getSocket();
-      if (socket && socket.connected) {
-        socket.emit("cursor.move", { documentId, x, y });
-      }
-      lastCursorEmitRef.current = now;
-    }
-  };
-
-
-
-  // Set up resize observer to keep canvas responsive
   useEffect(() => {
-    if (!boardRef.current) return;
-
+    // Stage sizing calculation
     const updateSize = () => {
-      if (boardRef.current) {
-        const { clientWidth, clientHeight } = boardRef.current;
+      const parent = boardRef.current;
+      if (parent) {
         setStageSize({
-          width: clientWidth,
-          height: clientHeight,
+          width: parent.clientWidth,
+          height: parent.clientHeight,
         });
       }
     };
-
+    
     updateSize();
-    const resizeObserver = new ResizeObserver(updateSize);
-    resizeObserver.observe(boardRef.current);
-
-    return () => resizeObserver.disconnect();
+    window.addEventListener("resize", updateSize);
+    return () => window.removeEventListener("resize", updateSize);
   }, []);
 
-  // Center the drawing board initially on load/resize
   useEffect(() => {
-    if (!stageSize.width || !stageSize.height) return;
+    // Realtime collaboration socket flow
+    if (!documentId || !accessToken) return;
 
-    const centeredX = (stageSize.width - boardWidth * scale) / 2;
-    const centeredY = (stageSize.height - boardHeight * scale) / 2;
+    const socket = initSocket(accessToken);
 
-    requestAnimationFrame(() => {
-      setPosition({ x: centeredX, y: centeredY });
+    socket.on("collaborator-list", (list: any[]) => {
+      setCollaborators(list.filter((c) => c.userId !== user?.id));
     });
-  }, [stageSize.width, stageSize.height, boardWidth, boardHeight, scale]);
 
-  // Keep the transformer synced with selected node
-  useEffect(() => {
-    if (!transformerRef.current) return;
-    const node = selectedElementId ? objectRefs.current[selectedElementId] : null;
-    if (node) {
-      transformerRef.current.nodes([node]);
-      transformerRef.current.getLayer()?.batchDraw();
-    } else {
-      transformerRef.current.nodes([]);
-      transformerRef.current.getLayer()?.batchDraw();
+    socket.on("collaborator-cursor", (data: any) => {
+      setCollaborators((prev) =>
+        prev.map((c) => (c.userId === data.userId ? { ...c, cursor: data.cursor } : c))
+      );
+    });
+
+    socket.on("collaborator-action", (data: any) => {
+      if (data.userId === user?.id) return;
+      if (data.type === "element-update") {
+        useStore.getState().updateElement(data.elementId, data.patch, false);
+      } else if (data.type === "element-add") {
+        useStore.getState().addElement(data.element);
+      } else if (data.type === "element-delete") {
+        useStore.getState().deleteElement(data.elementId);
+      } else if (data.type === "document-update") {
+        if (data.patch.boardWidth) useStore.getState().setBoardWidth(data.patch.boardWidth);
+        if (data.patch.boardHeight) useStore.getState().setBoardHeight(data.patch.boardHeight);
+        if (data.patch.backgroundColor) useStore.getState().setBackgroundColor(data.patch.backgroundColor);
+      }
+    });
+
+    return () => {
+      disconnectSocket();
+    };
+  }, [documentId, accessToken, user]);
+
+  const handleStageMouseMove = (e: any) => {
+    const stage = stageRef.current;
+    if (!stage) return;
+    const socket = getSocket();
+    if (!socket) return;
+
+    const now = Date.now();
+    if (now - lastCursorEmitRef.current < 80) return; // limit rate
+    lastCursorEmitRef.current = now;
+
+    const pointer = stage.getPointerPosition();
+    if (pointer) {
+      const x = (pointer.x - position.x) / scale;
+      const y = (pointer.y - position.y) / scale;
+      socket.emit("cursor-move", { x, y });
     }
-  }, [selectedElementId, elements]);
+  };
 
+  const handleShapeClick = (id: string) => {
+    selectElement(id);
+  };
 
+  const handleStageClick = (e: any) => {
+    if (e.target === e.target.getStage()) {
+      selectElement(null);
+    }
+  };
+
+  const updateBoardWidth = (width: number) => {
+    setBoardWidth(width);
+  };
+
+  const updateBoardHeight = (height: number) => {
+    setBoardHeight(height);
+  };
+
+  const changeBackground = (color: string) => {
+    setBackgroundColor(color);
+  };
+
+  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const doc = JSON.parse(event.target?.result as string);
+        useStore.getState().loadDocument(doc);
+        showToast("Design imported successfully.", "success");
+      } catch (err) {
+        showToast("Failed to parse JSON file.", "error");
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const exportToJSON = () => {
+    const doc = serializeDocument();
+    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
+      JSON.stringify(doc, null, 2)
+    )}`;
+    const downloadAnchor = document.createElement("a");
+    downloadAnchor.setAttribute("href", jsonString);
+    downloadAnchor.setAttribute("download", `${documentName || "whiteboard"}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+    showToast("Design exported as JSON.", "success");
+  };
 
   const exportToPNG = () => {
     const stage = stageRef.current;
     if (!stage) return;
     const originalSelected = selectedElementId;
     selectElement(null);
-
+    
     setTimeout(() => {
       const dataUrl = stage.toDataURL({ pixelRatio: 2 });
       const link = document.createElement("a");
@@ -507,86 +381,13 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
       link.href = dataUrl;
       document.body.appendChild(link);
       link.click();
-      document.body.removeChild(link);
-      if (originalSelected) selectElement(originalSelected);
+      link.remove();
+      selectElement(originalSelected);
       showToast("Design exported as PNG.", "success");
-    }, 100);
+    }, 50);
   };
 
-  const exportToJSON = () => {
-    const docData = serializeDocument();
-    const payload = {
-      name: documentName,
-      data: docData,
-      version: documentVersion,
-    };
-    const jsonString = `data:text/json;charset=utf-8,${encodeURIComponent(
-      JSON.stringify(payload, null, 2)
-    )}`;
-    const link = document.createElement("a");
-    link.download = `${documentName || "whiteboard"}.json`;
-    link.href = jsonString;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    showToast("Design exported as JSON.", "success");
-  };
-
-  const handleImportJSON = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (!parsed || !parsed.data || !Array.isArray(parsed.data.elements)) {
-          showToast("Invalid JSON format. Make sure it is a valid whiteboard design file.", "error");
-          return;
-        }
-
-        if (documentId) {
-          useStore.setState({
-            documentName: parsed.name || documentName,
-            boardWidth: parsed.data.board?.width || parsed.data.boardWidth || boardWidth,
-            boardHeight: parsed.data.board?.height || parsed.data.boardHeight || boardHeight,
-            backgroundColor: parsed.data.board?.background || parsed.data.backgroundColor || boardColor,
-            elements: parsed.data.elements,
-            isDirty: true,
-            saveStatus: "idle",
-          });
-          const socket = getSocket();
-          if (socket && socket.connected) {
-            socket.emit("element.op", {
-              documentId,
-              op: {
-                type: "canvas.update",
-                payload: {
-                  boardWidth: parsed.data.board?.width || parsed.data.boardWidth || boardWidth,
-                  boardHeight: parsed.data.board?.height || parsed.data.boardHeight || boardHeight,
-                  backgroundColor: parsed.data.board?.background || parsed.data.backgroundColor || boardColor,
-                  elements: parsed.data.elements,
-                },
-              },
-            });
-          }
-        } else {
-          useStore.setState({
-            documentName: parsed.name || "Imported Design",
-            boardWidth: parsed.data.board?.width || parsed.data.boardWidth || boardWidth,
-            boardHeight: parsed.data.board?.height || parsed.data.boardHeight || boardHeight,
-            backgroundColor: parsed.data.board?.background || parsed.data.backgroundColor || boardColor,
-            elements: parsed.data.elements,
-            isDirty: false,
-          });
-        }
-        showToast("Design imported successfully.", "success");
-      } catch (err: any) {
-        showToast("Failed to parse JSON file: " + err.message, "error");
-      }
-    };
-    reader.readAsText(file);
-  };
+  const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
   const zoomAtPoint = (pointer: { x: number; y: number }, nextScale: number) => {
     const oldScale = scale;
@@ -657,7 +458,6 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     const nextScale = clamp(scale / SCALE_STEP, MIN_SCALE, MAX_SCALE);
     zoomAtPoint(centerPoint, nextScale);
   };
-
 
   const handleZoomFit = () => {
     setScale(1);
@@ -764,15 +564,17 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     const newElement = {
       id: `element-${Date.now()}`,
       type: "text",
-      name: "Text",
-      x: boardWidth / 2 - 160,
+      x: boardWidth / 2 - 60,
       y: boardHeight / 2 - 20,
-      width: 320,
+      width: 120,
+      height: 40,
       text,
-      fontSize: 20,
-      fill: "#0f172a",
+      fontSize: 14,
+      fontFamily: "system-ui",
+      fill: "#000000",
       visible: true,
       locked: false,
+      rotation: 0,
     };
     addElement(newElement);
     setActiveTool("Text");
@@ -780,87 +582,21 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
   };
 
 
-  const changeBackground = (color: string) => {
-    setBackgroundColor(color);
-  };
 
-  const updateBoardWidth = (value: number) => {
-    const nextWidth = clamp(value || MIN_BOARD_WIDTH, MIN_BOARD_WIDTH, 5000);
-    setBoardWidth(nextWidth);
-  };
+  const getDistance = (p1: any, p2: any) =>
+    Math.sqrt(Math.pow(p2.clientX - p1.clientX, 2) + Math.pow(p2.clientY - p1.clientY, 2));
 
-  const updateBoardHeight = (value: number) => {
-    const nextHeight = clamp(value || MIN_BOARD_HEIGHT, MIN_BOARD_HEIGHT, 5000);
-    setBoardHeight(nextHeight);
-  };
+  const getCenter = (p1: any, p2: any) => ({
+    x: (p1.clientX + p2.clientX) / 2,
+    y: (p1.clientY + p2.clientY) / 2,
+  });
 
-  const handleShapeClick = (id: string) => {
-    selectElement(id);
-  };
-
-  const handleStageMouseDown = (e: any) => {
-    if (userRole === "viewer") return;
-    const stage = e.target.getStage();
-    if (activeTool === "Stroke") {
-      const pointer = stage.getPointerPosition();
-      if (!pointer) return;
-      setIsDrawing(true);
-      setDraftElement({
-        id: `path-${Date.now()}`,
-        type: "path",
-        name: "Path",
-        points: [pointer.x, pointer.y],
-        stroke: strokeConfig[selectedStroke].stroke,
-        strokeWidth: strokeConfig[selectedStroke].strokeWidth,
-        lineCap: strokeConfig[selectedStroke].lineCap,
-        visible: true,
-        locked: false,
-      });
-      selectElement(null);
-      return;
-    }
-    if (e.target === stage || e.target.name() === "background") {
-      selectElement(null);
-    }
-  };
-
-  const handleMouseMove = (e: any) => {
-    const stage = e.target.getStage();
-    const pointer = stage?.getPointerPosition();
-    if (pointer) {
-      const boardX = (pointer.x - position.x) / scale;
-      const boardY = (pointer.y - position.y) / scale;
-      emitCursorMove(boardX, boardY);
-    }
-
-    if (!isDrawing || !draftElement) return;
-    if (!pointer) return;
-    setDraftElement({
-      ...draftElement,
-      points: [...draftElement.points, pointer.x, pointer.y],
-    });
-  };
-
-  const handleMouseUp = () => {
-    setMiddleMouseDown(false);
-    if (draftElement) {
-      addElement(draftElement);
-      setDraftElement(null);
-    }
-    setIsDrawing(false);
-  };
-
-  const handleStageTouchEnd = () => {
-    handleTouchEnd();
-    handleMouseUp();
-  };
-
-  const renderRectangle = (item: any) => {
+  const renderRect = (item: any) => {
     const commonProps = {
       x: item.x,
       y: item.y,
-      width: Math.max(30, item.width),
-      height: Math.max(30, item.height),
+      width: Math.max(10, item.width),
+      height: Math.max(10, item.height),
       rotation: item.rotation || 0,
       fill: item.fill,
       stroke: item.stroke,
@@ -880,8 +616,8 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
         updateElement(item.id, {
           x: Math.round(node.x()),
           y: Math.round(node.y()),
-          width: Math.round(Math.max(30, item.width * scaleX)),
-          height: Math.round(Math.max(30, item.height * scaleY)),
+          width: Math.round(Math.max(10, item.width * scaleX)),
+          height: Math.round(Math.max(10, item.height * scaleY)),
           rotation: Math.round(node.rotation()),
         }, false);
       },
@@ -892,8 +628,8 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
         updateElement(item.id, {
           x: Math.round(node.x()),
           y: Math.round(node.y()),
-          width: Math.round(Math.max(30, item.width * scaleX)),
-          height: Math.round(Math.max(30, item.height * scaleY)),
+          width: Math.round(Math.max(10, item.width * scaleX)),
+          height: Math.round(Math.max(10, item.height * scaleY)),
           rotation: Math.round(node.rotation()),
         }, true);
         node.scaleX(1);
@@ -996,7 +732,7 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
       y: item.y,
       sides: 4,
       radius: Math.max(10, item.radius),
-      rotation: item.rotation || 45,
+      rotation: item.rotation || 0,
       fill: item.fill,
       stroke: item.stroke,
       strokeWidth: item.strokeWidth,
@@ -1038,12 +774,10 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     const commonProps = {
       x: item.x,
       y: item.y,
-      width: Math.max(10, item.width),
-      height: Math.max(2, item.height),
+      points: item.points || [0, 0, item.width, 0],
       rotation: item.rotation || 0,
-      fill: item.stroke,
-      stroke: item.stroke,
-      strokeWidth: 0,
+      stroke: item.stroke || "#000000",
+      strokeWidth: item.strokeWidth || 5,
       draggable: !item.locked && userRole !== "viewer",
       onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
       onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
@@ -1055,103 +789,94 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
       onTransform: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
-        const scaleY = node.scaleY();
         updateElement(item.id, {
           x: Math.round(node.x()),
           y: Math.round(node.y()),
           width: Math.round(Math.max(10, item.width * scaleX)),
-          height: Math.round(Math.max(2, item.height * scaleY)),
           rotation: Math.round(node.rotation()),
         }, false);
       },
       onTransformEnd: (e: any) => {
         const node = e.target;
         const scaleX = node.scaleX();
-        const scaleY = node.scaleY();
         updateElement(item.id, {
           x: Math.round(node.x()),
           y: Math.round(node.y()),
           width: Math.round(Math.max(10, item.width * scaleX)),
-          height: Math.round(Math.max(2, item.height * scaleY)),
           rotation: Math.round(node.rotation()),
+        }, true);
+        node.scaleX(1);
+      },
+    };
+    return <Line key={item.id} {...commonProps} />;
+  };
+
+  const renderTextItem = (item: any) => {
+    const commonProps = {
+      x: item.x,
+      y: item.y,
+      text: item.text,
+      fontSize: item.fontSize,
+      fontFamily: item.fontFamily,
+      fill: item.fill || "#000000",
+      draggable: !item.locked && userRole !== "viewer",
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
+      onClick: () => handleShapeClick(item.id),
+      onTap: () => handleShapeClick(item.id),
+      onDblClick: () => {
+        const newText = window.prompt("Edit text", item.text);
+        if (newText !== null) {
+          updateElement(item.id, { text: newText }, true);
+        }
+      },
+      ref: (node: any) => {
+        if (node) objectRefs.current[item.id] = node;
+      },
+      onTransform: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          fontSize: Math.round(Math.max(8, item.fontSize * scaleX)),
+        }, false);
+      },
+      onTransformEnd: (e: any) => {
+        const node = e.target;
+        const scaleX = node.scaleX();
+        updateElement(item.id, {
+          x: Math.round(node.x()),
+          y: Math.round(node.y()),
+          fontSize: Math.round(Math.max(8, item.fontSize * scaleX)),
         }, true);
         node.scaleX(1);
         node.scaleY(1);
       },
     };
-    return <Rect key={item.id} {...commonProps} />;
+    return <Text key={item.id} {...commonProps} />;
   };
 
-  const renderTextItem = (item: any) => (
-    <Text
-      key={item.id}
-      x={item.x}
-      y={item.y}
-      text={item.text}
-      width={item.width}
-      fontSize={item.fontSize}
-      fontFamily={item.fontFamily}
-      fontStyle={item.fontWeight}
-      fill={item.fill || "#000"}
-      draggable={!item.locked && userRole !== "viewer"}
-      onDragMove={(e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false)}
-      onDragEnd={(e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true)}
-      onClick={() => handleShapeClick(item.id)}
-      onTap={() => handleShapeClick(item.id)}
-      onDblClick={() => {
-        const newText = window.prompt("Edit text", item.text);
-        if (newText !== null) {
-          updateElement(item.id, { text: newText }, true);
-        }
-      }}
-      ref={(node: any) => {
+  const renderPathItem = (item: any) => {
+    const commonProps = {
+      x: item.x,
+      y: item.y,
+      points: item.points,
+      stroke: item.stroke || "#000000",
+      strokeWidth: item.strokeWidth || 3,
+      lineCap: "round" as const,
+      lineJoin: "round" as const,
+      draggable: !item.locked && userRole !== "viewer",
+      onDragMove: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, false),
+      onDragEnd: (e: any) => updateElement(item.id, { x: Math.round(e.target.x()), y: Math.round(e.target.y()) }, true),
+      onClick: () => handleShapeClick(item.id),
+      onTap: () => handleShapeClick(item.id),
+      ref: (node: any) => {
         if (node) objectRefs.current[item.id] = node;
-      }}
-      onTransform={(e: any) => {
-        const node = e.target;
-        const scaleX = node.scaleX();
-        const newWidth = Math.max(40, node.width() * scaleX);
-        updateElement(item.id, {
-          x: Math.round(node.x()),
-          y: Math.round(node.y()),
-          width: Math.round(newWidth),
-          rotation: Math.round(node.rotation()),
-        }, false);
-      }}
-      onTransformEnd={(e: any) => {
-        const node = e.target;
-        const scaleX = node.scaleX();
-        const newWidth = Math.max(40, node.width() * scaleX);
-        node.scaleX(1);
-        node.scaleY(1);
-        transformerRef.current?.forceUpdate();
-        updateElement(item.id, {
-          x: Math.round(node.x()),
-          y: Math.round(node.y()),
-          width: Math.round(newWidth),
-          rotation: Math.round(node.rotation()),
-        }, true);
-      }}
-    />
-  );
-
-  const renderPathItem = (item: any) => (
-    <Line
-      key={item.id}
-      points={item.points}
-      stroke={item.stroke}
-      strokeWidth={item.strokeWidth}
-      lineCap={item.lineCap}
-      lineJoin="round"
-      tension={0.5}
-      globalCompositeOperation="source-over"
-      onClick={() => handleShapeClick(item.id)}
-      onTap={() => handleShapeClick(item.id)}
-      ref={(node: any) => {
-        if (node) objectRefs.current[item.id] = node;
-      }}
-    />
-  );
+      },
+    };
+    return <Line key={item.id} {...commonProps} />;
+  };
 
   const renderImageElement = (item: any) => {
     const commonProps = {
@@ -1170,8 +895,8 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
         updateElement(item.id, {
           x: Math.round(node.x()),
           y: Math.round(node.y()),
-          width: Math.round(Math.max(30, (item.width || 200) * scaleX)),
-          height: Math.round(Math.max(30, (item.height || 200) * scaleY)),
+          width: Math.round(Math.max(10, item.width * scaleX)),
+          height: Math.round(Math.max(10, item.height * scaleY)),
           rotation: Math.round(node.rotation()),
         }, false);
       },
@@ -1182,8 +907,8 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
         updateElement(item.id, {
           x: Math.round(node.x()),
           y: Math.round(node.y()),
-          width: Math.round(Math.max(30, (item.width || 200) * scaleX)),
-          height: Math.round(Math.max(30, (item.height || 200) * scaleY)),
+          width: Math.round(Math.max(10, item.width * scaleX)),
+          height: Math.round(Math.max(10, item.height * scaleY)),
           rotation: Math.round(node.rotation()),
         }, true);
         node.scaleX(1);
@@ -1193,12 +918,11 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
     return <CanvasImage key={item.id} {...commonProps} />;
   };
 
-  const renderItem = (item: any) => {
+  const renderElement = (item: any) => {
     if (!item.visible) return null;
     switch (item.type) {
       case "rect":
-      case "rectangle":
-        return renderRectangle(item);
+        return renderRect(item);
       case "circle":
         return renderCircle(item);
       case "triangle":
@@ -1220,6 +944,136 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
 
   const selectedItem = elements.find((item: any) => item.id === selectedElementId) || null;
 
+  useEffect(() => {
+    const stage = stageRef.current;
+    const transformer = transformerRef.current;
+    if (!stage || !transformer) return;
+
+    if (selectedElementId) {
+      const selectedNode = objectRefs.current[selectedElementId];
+      if (selectedNode) {
+        transformer.nodes([selectedNode]);
+        transformer.getLayer().batchDraw();
+      } else {
+        transformer.nodes([]);
+      }
+    } else {
+      transformer.nodes([]);
+    }
+  }, [selectedElementId, elements]);
+
+  useEffect(() => {
+    // Event listeners mapped to window custom actions
+    const onGenerate = () => handleGenerateCode();
+    const onInspect = () => handleInspectSchema();
+    const onAddShape = (e: Event) => {
+      const shape = (e as CustomEvent<{ shape: string }>).detail?.shape;
+      if (shape) addShape(shape);
+    };
+    const onAddText = (e: Event) => {
+      const text = (e as CustomEvent<{ text: string }>).detail?.text;
+      addText(text || "Double click to edit");
+    };
+    const onRefine = (e: Event) => {
+      const prompt = (e as CustomEvent<{ prompt: string }>).detail?.prompt;
+      if (prompt) handleRefineCode(prompt);
+    };
+    const onAcceptRefinement = () => handleAcceptRefinement();
+    const onRejectRefinement = () => handleRejectRefinement();
+    
+    const onZoomIn = () => handleZoomIn();
+    const onZoomOut = () => handleZoomOut();
+    const onZoomFit = () => handleZoomFit();
+
+    const onExportPNG = () => exportToPNG();
+    const onExportJSON = () => exportToJSON();
+    const onImportJSON = (e: Event) => {
+      const changeEvent = (e as CustomEvent).detail;
+      if (changeEvent) handleImportJSON(changeEvent);
+    };
+
+    window.addEventListener("trigger-generate-code", onGenerate);
+    window.addEventListener("trigger-inspect-schema", onInspect);
+    window.addEventListener("trigger-add-shape", onAddShape);
+    window.addEventListener("trigger-add-text", onAddText);
+    window.addEventListener("trigger-refine-code", onRefine);
+    window.addEventListener("trigger-accept-refinement", onAcceptRefinement);
+    window.addEventListener("trigger-reject-refinement", onRejectRefinement);
+    window.addEventListener("trigger-zoom-in", onZoomIn);
+    window.addEventListener("trigger-zoom-out", onZoomOut);
+    window.addEventListener("trigger-zoom-fit", onZoomFit);
+    window.addEventListener("trigger-export-png", onExportPNG);
+    window.addEventListener("trigger-export-json", onExportJSON);
+    window.addEventListener("trigger-import-json", onImportJSON);
+
+    return () => {
+      window.removeEventListener("trigger-generate-code", onGenerate);
+      window.removeEventListener("trigger-inspect-schema", onInspect);
+      window.removeEventListener("trigger-add-shape", onAddShape);
+      window.removeEventListener("trigger-add-text", onAddText);
+      window.removeEventListener("trigger-refine-code", onRefine);
+      window.removeEventListener("trigger-accept-refinement", onAcceptRefinement);
+      window.removeEventListener("trigger-reject-refinement", onRejectRefinement);
+      window.removeEventListener("trigger-zoom-in", onZoomIn);
+      window.removeEventListener("trigger-zoom-out", onZoomOut);
+      window.removeEventListener("trigger-zoom-fit", onZoomFit);
+      window.removeEventListener("trigger-export-png", onExportPNG);
+      window.removeEventListener("trigger-export-json", onExportJSON);
+      window.removeEventListener("trigger-import-json", onImportJSON);
+    };
+  }, [
+    handleGenerateCode,
+    handleInspectSchema,
+    addShape,
+    addText,
+    handleRefineCode,
+    handleAcceptRefinement,
+    handleRejectRefinement,
+    exportToPNG,
+    exportToJSON,
+    handleImportJSON,
+  ]);
+
+  // Canvas panning state
+  const [spacePressed, setSpacePressed] = useState(false);
+  const [middleMouseDown, setMiddleMouseDown] = useState(false);
+
+  // Track spacebar keypresses globally for canvas panning
+  useEffect(() => {
+    const handleKeyDownGlobal = (e: KeyboardEvent) => {
+      const activeEl = document.activeElement;
+      const isInput = activeEl && (
+        activeEl.tagName === "INPUT" ||
+        activeEl.tagName === "TEXTAREA" ||
+        (activeEl as HTMLElement).isContentEditable
+      );
+      if (isInput) return;
+
+      if (e.code === "Space") {
+        setSpacePressed(true);
+        if (stageRef.current) {
+          stageRef.current.container().style.cursor = "grab";
+        }
+      }
+    };
+
+    const handleKeyUpGlobal = (e: KeyboardEvent) => {
+      if (e.code === "Space") {
+        setSpacePressed(false);
+        if (stageRef.current) {
+          stageRef.current.container().style.cursor = "default";
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDownGlobal);
+    window.addEventListener("keyup", handleKeyUpGlobal);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDownGlobal);
+      window.removeEventListener("keyup", handleKeyUpGlobal);
+    };
+  }, []);
+
   return (
     <section className="canvas-base">
       <div className="canvas-workspace">
@@ -1234,219 +1088,63 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
                 display: "flex",
                 alignItems: "center",
                 gap: "8px",
+                background: "rgba(15,23,42,0.6)",
                 padding: "6px 12px",
-                borderRadius: "14px",
-                background: "var(--surface-elevated)",
-                backdropFilter: "blur(12px)",
+                borderRadius: "99px",
+                backdropFilter: "blur(8px)",
                 border: "1px solid var(--border)",
-                boxShadow: "var(--shadow-sm)",
-                zIndex: 100,
+                zIndex: 10,
               }}
             >
-              {collaborators.map((u) => {
-                const initial = u.user?.email ? u.user.email.charAt(0).toUpperCase() : "?";
-                const color = u.user?.color || "#3b82f6";
-                return (
-                  <div
-                    key={u.socketId}
-                    title={`${u.user?.email || "Anonymous"} (${u.user?.role || "collaborator"})`}
-                    style={{
-                      width: "32px",
-                      height: "32px",
-                      borderRadius: "50%",
-                      backgroundColor: color,
-                      color: "#ffffff",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      fontSize: "12px",
-                      fontWeight: "700",
-                      border: "2px solid #ffffff",
-                      boxShadow: "0 4px 10px rgba(15, 23, 42, 0.15)",
-                      cursor: "default",
-                    }}
-                  >
-                    {initial}
-                  </div>
-                );
-              })}
+              {collaborators.map((c) => (
+                <div
+                  key={c.userId}
+                  style={{
+                    width: "24px",
+                    height: "24px",
+                    borderRadius: "50%",
+                    background: c.color || "#a855f7",
+                    color: "#fff",
+                    fontSize: "10px",
+                    fontWeight: "700",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    border: "2px solid #0f172a",
+                  }}
+                  title={c.name}
+                >
+                  {c.name ? c.name[0].toUpperCase() : "U"}
+                </div>
+              ))}
             </div>
           )}
 
-          {/* Collaborator Cursor Overlays */}
-          {collaborators.map((u) => {
-            if (!u.cursor) return null;
-            const left = position.x + u.cursor.x * scale;
-            const top = position.y + u.cursor.y * scale;
-            const cursorColor = u.user?.color || "#3b82f6";
-            return (
-              <div
-                key={u.socketId}
-                style={{
-                  position: "absolute",
-                  left: `${left}px`,
-                  top: `${top}px`,
-                  pointerEvents: "none",
-                  transform: "translate(-2px, -2px)",
-                  zIndex: 99,
-                  display: "flex",
-                  flexDirection: "column",
-                  alignItems: "flex-start",
-                  transition: "left 0.08s ease-out, top 0.08s ease-out",
-                }}
-              >
-                <svg
-                  width="24"
-                  height="24"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  style={{
-                    color: cursorColor,
-                    filter: "drop-shadow(0 2px 4px rgba(15, 23, 42, 0.3))",
-                  }}
-                >
-                  <path
-                    d="M5.65376 12.3963L15.9327 2.11732C16.485 1.56503 17.4116 1.87977 17.5222 2.65342L18.9959 12.9691C19.0968 13.6756 18.3244 14.1953 17.6975 13.8291L13.784 11.5413L10.3705 14.9548C9.98 15.3453 9.34683 15.3453 8.95631 14.9548L5.65376 13.6523C5.07476 13.4243 5.07476 12.6243 5.65376 12.3963Z"
-                    fill="currentColor"
-                    stroke="#ffffff"
-                    strokeWidth="2"
-                  />
-                </svg>
-                <div
-                  style={{
-                    marginLeft: "12px",
-                    marginTop: "12px",
-                    backgroundColor: cursorColor,
-                    color: "#ffffff",
-                    fontSize: "10px",
-                    fontWeight: "700",
-                    padding: "2px 8px",
-                    borderRadius: "4px",
-                    whiteSpace: "nowrap",
-                    boxShadow: "0 4px 12px rgba(15, 23, 42, 0.25)",
-                  }}
-                >
-                  {u.user?.email || "Anonymous"}
-                </div>
-              </div>
-            );
-          })}
-
-          {stageSize.width > 0 && stageSize.height > 0 && (
-            <Stage
-              ref={stageRef}
-              width={stageSize.width}
-              height={stageSize.height}
-              x={position.x}
-              y={position.y}
-              scaleX={scale}
-              scaleY={scale}
-              draggable={spacePressed || middleMouseDown}
-              style={{ cursor: spacePressed ? (middleMouseDown ? "grabbing" : "grab") : "default" }}
-              onWheel={handleWheel}
-              onWheelZ={handleWheel}
-              onTouchMove={handleTouchMove}
-              onTouchEnd={handleStageTouchEnd}
-              onMouseDown={(e: any) => {
-                if (e.evt.button === 1) {
-                  e.evt.preventDefault();
-                  setMiddleMouseDown(true);
-                } else {
-                  handleStageMouseDown(e);
-                }
-              }}
-              onTouchStart={handleStageMouseDown}
-              onMouseMove={handleMouseMove}
-              onMouseUp={handleMouseUp}
-              onDragMove={(e: any) => {
-                if (e.target === stageRef.current) {
-                  setPosition({ x: e.target.x(), y: e.target.y() });
-                }
-              }}
-              onDragEnd={(e: any) => {
-                if (e.target === stageRef.current) {
-                  setPosition({ x: e.target.x(), y: e.target.y() });
-                }
-                setMiddleMouseDown(false);
-              }}
-            >
-              <Layer>
-                <Rect
-                  name="background"
-                  x={0}
-                  y={0}
-                  width={boardWidth}
-                  height={boardHeight}
-                  fill={boardColor}
-                  cornerRadius={24}
-                  shadowColor="rgba(15, 23, 42, 0.15)"
-                  shadowBlur={42}
-                  shadowOffset={{ x: 0, y: 16 }}
-                  shadowOpacity={0.8}
-                />
-                {elements.map((item: any) => renderItem(item))}
-                {draftElement && renderPathItem(draftElement)}
-                {selectedElementId && userRole !== "viewer" && (
-                  <Transformer
-                    key={elements.find((el: any) => el.id === selectedElementId)?.type === "text" ? "text-transformer" : "shape-transformer"}
-                    ref={transformerRef}
-                    rotateEnabled={true}
-                    enabledAnchors={elements.find((el: any) => el.id === selectedElementId)?.type === "text"
-                      ? ["middle-left", "middle-right"]
-                      : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"]
-                    }
-                    boundBoxFunc={(oldBox, newBox) => {
-                      if (elements.find((el: any) => el.id === selectedElementId)?.type === "text") {
-                        newBox.width = Math.max(30, newBox.width);
-                      }
-                      return newBox;
-                    }}
-                  />
-                )}
-              </Layer>
-            </Stage>
-          )}
-
-          {user && documentId && (() => {
-            let badgeText;
-            let badgeColor;
-            let badgeBg = "var(--surface-elevated)";
-
-            if (saveStatus === "saving") {
-              badgeText = "Saving...";
-              badgeColor = "var(--accent)";
-            } else if (saveStatus === "conflict") {
-              badgeText = "⚠ Version Conflict";
-              badgeColor = "var(--danger)";
-              badgeBg = "rgba(239, 68, 68, 0.15)";
-            } else if (saveStatus === "error") {
-              badgeText = "⚠ Save Failed";
-              badgeColor = "var(--danger)";
-            } else if (saveStatus === "saved" && !isDirty) {
-              badgeText = "✓ Saved";
-              badgeColor = "var(--success)";
-            } else if (isDirty) {
-              badgeText = "Unsaved Changes";
-              badgeColor = "var(--warning)";
-            } else {
-              badgeText = "✓ Saved";
-              badgeColor = "var(--success)";
+          {/* Conflict Indicator badge overlay (bottom left canvas corner) */}
+          {(() => {
+            if (saveStatus !== "conflict" && saveStatus !== "saving" && saveStatus !== "saved") return null;
+            let badgeColor = "rgba(15,23,42,0.6)";
+            let badgeText = "";
+            if (saveStatus === "conflict") {
+              badgeColor = "rgba(239, 68, 68, 0.85)";
+              badgeText = "⚠️ VERSION CONFLICT DETECTED - PLEASE RELOAD";
+            } else if (saveStatus === "saving") {
+              badgeText = "⏳ Syncing design updates...";
+            } else if (saveStatus === "saved") {
+              badgeText = "✅ Document state synced with cloud";
             }
-
             return (
               <div
                 style={{
                   position: "absolute",
-                  left: "18px",
                   bottom: "18px",
-                  display: "flex",
-                  alignItems: "center",
-                  padding: "8px 14px",
-                  borderRadius: "999px",
-                  background: badgeBg,
+                  left: "18px",
+                  background: badgeColor,
+                  padding: "6px 14px",
+                  borderRadius: "99px",
                   backdropFilter: "blur(8px)",
                   boxShadow: "var(--shadow-sm)",
-                  color: badgeColor,
+                  color: "#fff",
                   fontSize: "12px",
                   fontWeight: "700",
                   pointerEvents: "none",
@@ -1462,9 +1160,65 @@ const CanvasBase = forwardRef((props: any, ref: any) => {
 
 
         </div>
+
+        {/* Schema Inspector Modal */}
+        {isSchemaInspectorOpen && (
+          <Modal
+            title={
+              <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+                <div
+                  style={{
+                    width: "30px",
+                    height: "30px",
+                    borderRadius: "8px",
+                    background: "rgba(99,102,241,0.15)",
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                  }}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#818cf8" strokeWidth="2.5">
+                    <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
+                  </svg>
+                </div>
+                <span style={{ fontSize: "14px", fontWeight: "700", color: "var(--text-primary)" }}>
+                  UI Schema Inspector
+                </span>
+              </div>
+            }
+            onClose={() => setIsSchemaInspectorOpen(false)}
+            footer={
+              <button
+                type="button"
+                className="side-menu__btn-secondary"
+                onClick={() => setIsSchemaInspectorOpen(false)}
+              >
+                Close
+              </button>
+            }
+          >
+            <p style={{ margin: "0 0 12px", fontSize: "12px", color: "var(--text-muted)", lineHeight: "1.5" }}>
+              This is the raw, frontend-extracted semantic AST generated by the canvas transformer. It is normalized and enriched downstream by the AI generation pipeline.
+            </p>
+            <pre
+              style={{
+                margin: 0,
+                padding: "14px",
+                background: "var(--bg)",
+                border: "1px solid var(--border)",
+                borderRadius: "var(--radius-sm)",
+                fontSize: "11px",
+                color: "var(--text-primary)",
+                fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+                overflowX: "auto",
+                maxHeight: "380px",
+              }}
+            >
+              {JSON.stringify(localSchema, null, 2)}
+            </pre>
+          </Modal>
+        )}
       </div>
     </section>
   );
-});
-
-export default CanvasBase;
+}
