@@ -153,21 +153,9 @@ export default function CodePreviewPanel({
   );
 
   return (
-    <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        className={`fixed inset-0 bg-black/60 backdrop-blur-sm z-[1000] transition-opacity duration-300 ${
-          isOpen ? "opacity-100 pointer-events-auto" : "opacity-0 pointer-events-none"
-        }`}
-      />
-
-      {/* Drawer */}
-      <div
-        className={`fixed top-0 right-0 bottom-0 w-full max-w-[340px] bg-slate-950 border-l border-slate-800 shadow-2xl z-[1001] flex flex-col transition-transform duration-350 ease-out ${
-          isOpen ? "translate-x-0" : "translate-x-full"
-        }`}
-      >
+    <div
+      className="relative h-full w-[45%] min-w-[380px] bg-slate-950 border-l border-slate-800 flex flex-col z-[10] transition-all duration-300"
+    >
         {/* Header */}
         <div className="p-5 border-b border-slate-800 flex items-center justify-between bg-slate-900/50">
           <div className="flex items-center gap-3">
@@ -542,8 +530,7 @@ export default function CodePreviewPanel({
             </p>
           </div>
         )}
-      </div>
-    </>
+    </div>
   );
 }
 
