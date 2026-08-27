@@ -314,6 +314,42 @@ describe("UI-to-Code Platform Backend Tests", () => {
       expect(res.body.success).toBe(true);
       expect(res.body.generated.files[0].filename).toBe("App.jsx");
       expect(res.body.generated.files[0].content).toContain("Fallback Local Canvas Scaffold");
+    }, 15000);
+
+    it("should reject AI generation with 400 when elements array is missing or invalid", async () => {
+      const res = await request(app)
+        .post("/api/ai/generate")
+        .set("Authorization", `Bearer ${userBToken}`)
+        .send({
+          boardConfig: { boardWidth: 800, boardHeight: 600 },
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Validation failed");
     });
+
+    it("should reject AI refinement with 400 when code or instruction is missing", async () => {
+      const res = await request(app)
+        .post("/api/ai/refine")
+        .set("Authorization", `Bearer ${userBToken}`)
+        .send({
+          code: "",
+          instruction: "Make background indigo",
+        });
+      expect(res.status).toBe(400);
+      expect(res.body.error).toBe("Validation failed");
+    });
+
+    it("should successfully refine code under mock fallback when valid payload is passed", async () => {
+      const res = await request(app)
+        .post("/api/ai/refine")
+        .set("Authorization", `Bearer ${userBToken}`)
+        .send({
+          code: "export default function App() {}",
+          instruction: "Add a modern navbar",
+        });
+      expect(res.status).toBe(200);
+      expect(res.body.success).toBe(true);
+      expect(res.body.generated.files[0].content).toContain("Add a modern navbar");
+    }, 10000);
   });
 });

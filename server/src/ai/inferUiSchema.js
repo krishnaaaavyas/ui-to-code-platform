@@ -118,8 +118,7 @@ function inferUiSchema(elements, boardConfig = {}) {
     // Heuristic: If a rect has a label above it, or text placeholder inside it, and is typical input aspect ratio, it could be an input
     if ((el.type === "rect" || el.type === "rectangle") && kind !== "button") {
       const parentB = boundsMap.get(el.id);
-      // Small thin outline rectangle
-      if (parentB.height >= 30 && parentB.height <= 60 && parentB.width >= 100 && parentB.width <= 450 && (el.fill === "transparent" || el.fill === "#ffffff" || el.fill === "#fff")) {
+      if (parentB.height >= 30 && parentB.height <= 60 && parentB.width >= 100 && parentB.width <= 450 && (el.fill === "transparent" || el.fill === "#ffffff" || el.fill === "#fff" || el.fill === "white")) {
         kind = "input";
       }
     }

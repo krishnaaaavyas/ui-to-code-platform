@@ -176,11 +176,27 @@ exports.normalizeSchema = async (req, res, next) => {
  */
 exports.refineCode = async (req, res, next) => {
   try {
-    const { normalizedSchema, files, instruction, stack } = req.body;
+    let { normalizedSchema, files, instruction, stack, code } = req.body;
 
     if (!instruction) {
       return res.status(400).json({ error: "Instruction is required for refinement." });
     }
+
+    if (code && !normalizedSchema) {
+      normalizedSchema = {
+        framework: "react",
+        stylingLibrary: "tailwind",
+        elements: [],
+        layoutTree: {},
+        designTokens: {}
+      };
+      files = [{
+        filename: "App.jsx",
+        language: "jsx",
+        content: code
+      }];
+    }
+
     if (!normalizedSchema) {
       return res.status(400).json({ error: "Normalized UI Schema is required." });
     }

@@ -30,8 +30,15 @@ export default function InspectorPanel() {
   const isPath = selectedElement.type === "path" || selectedElement.type === "pen";
 
   const handleNumChange = (field: string, val: string) => {
+    if (val === "") {
+      updateElement(selectedElement.id, { [field]: 0 }, true);
+      return;
+    }
     const num = Number(val);
     if (!isNaN(num)) {
+      if ((field === "width" || field === "height" || field === "radius" || field === "strokeWidth" || field === "fontSize") && num < 0) {
+        return;
+      }
       updateElement(selectedElement.id, { [field]: num }, true);
     }
   };

@@ -128,6 +128,49 @@ function postProcess(rows) {
   return isArray ? list : list[0];
 }
 
+// Explicitly maps columns to values for RETURNING emulation in SQLite
+function getInsertedRow(sql, params, lastInsertRowid) {
+  const insertMatch = sql.match(/insert\s+into\s+\w+\s*\(([^)]+)\)/i);
+  if (insertMatch) {
+    const cols = insertMatch[1].split(",").map(c => c.trim());
+    const row = {};
+    cols.forEach((col, idx) => {
+      row[col] = params[idx];
+    });
+    if (!row.id) {
+      row.id = lastInsertRowid;
+    }
+    return row;
+  }
+  
+  const updateMatch = sql.match(/update\s+\w+\s+set\s+([\s\S]+?)(?:\s+where|$)/i);
+  if (updateMatch) {
+    const setClause = updateMatch[1];
+    const row = {};
+    const parts = setClause.split(",");
+    parts.forEach((part) => {
+      const eqIdx = part.indexOf("=");
+      if (eqIdx !== -1) {
+        const col = part.substring(0, eqIdx).trim();
+        const valPlaceholder = part.substring(eqIdx + 1).trim();
+        const paramIdxMatch = valPlaceholder.match(/\$(\d+)/);
+        if (paramIdxMatch) {
+          const paramIdx = parseInt(paramIdxMatch[1], 10) - 1;
+          row[col] = params[paramIdx];
+        }
+      }
+    });
+    const whereMatch = sql.match(/where\s+id\s*=\s*\$(\d+)/i);
+    if (whereMatch) {
+      const paramIdx = parseInt(whereMatch[1], 10) - 1;
+      row.id = params[paramIdx];
+    }
+    return row;
+  }
+
+  return {};
+}
+
 // Unified Query interface
 async function query(sql, params = []) {
   if (usePg) {
@@ -150,16 +193,10 @@ async function query(sql, params = []) {
         const info = sqliteDb.prepare(sqliteSql).run(sqliteParams);
         
         if (sql.toLowerCase().includes("returning")) {
-          // Emulate returning
-          const id = params[0];
-          if (id && typeof id === "string") {
-            const tableMatch = sql.match(/(?:insert into|update)\s+([a-zA-Z0-9_]+)/i);
-            if (tableMatch) {
-              const table = tableMatch[1];
-              const row = sqliteDb.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
-              return { rows: postProcess(row ? [row] : []), rowCount: row ? 1 : 0 };
-            }
-          }
+          const row = { id: info.lastInsertRowid, ...params };
+          const parsed = getInsertedRow(sql, params, info.lastInsertRowid);
+          Object.assign(row, parsed);
+          return { rows: postProcess([row]), rowCount: 1 };
         }
         return { rows: [], rowCount: info.changes };
       }
@@ -204,15 +241,10 @@ async function runTransaction(callback) {
           } else {
             const info = sqliteDb.prepare(sqliteSql).run(sqliteParams);
             if (sql.toLowerCase().includes("returning")) {
-              const id = params[0];
-              if (id && typeof id === "string") {
-                const tableMatch = sql.match(/(?:insert into|update)\s+([a-zA-Z0-9_]+)/i);
-                if (tableMatch) {
-                  const table = tableMatch[1];
-                  const row = sqliteDb.prepare(`SELECT * FROM ${table} WHERE id = ?`).get(id);
-                  return { rows: postProcess(row ? [row] : []), rowCount: row ? 1 : 0 };
-                }
-              }
+              const row = { id: info.lastInsertRowid, ...params };
+              const parsed = getInsertedRow(sql, params, info.lastInsertRowid);
+              Object.assign(row, parsed);
+              return { rows: postProcess([row]), rowCount: 1 };
             }
             return { rows: [], rowCount: info.changes };
           }
