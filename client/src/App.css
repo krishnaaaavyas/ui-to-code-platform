@@ -1590,7 +1590,7 @@
   font-size: 11px;
   color: var(--text-muted);
   font-weight: 600;
-  width: 24px;
+  margin-right: 8px;
   flex-shrink: 0;
   text-transform: uppercase;
 }

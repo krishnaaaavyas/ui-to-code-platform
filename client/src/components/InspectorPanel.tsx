@@ -15,13 +15,9 @@ export default function InspectorPanel() {
         <div className="inspector-panel__header">
           <span className="inspector-panel__label">Inspector</span>
         </div>
-        <div className="inspector-panel__empty-state">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="var(--text-muted)" strokeWidth="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="M9 17L15 17" />
-            <path d="M12 7L12 13" />
-          </svg>
-          <p className="inspector-panel__empty">Select an element to inspect its properties</p>
+        <div style={{ padding: "0 14px", marginTop: "8px", color: "var(--text-muted)", fontSize: "12px", lineHeight: "1.6" }}>
+          <p style={{ fontWeight: 600, color: "var(--text-primary)", margin: "0 0 4px 0" }}>No selection</p>
+          <p style={{ margin: 0 }}>Select an element on the canvas to edit its properties.</p>
         </div>
       </aside>
     );
