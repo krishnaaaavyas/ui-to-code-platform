@@ -13,6 +13,7 @@ function App() {
   const menuCollapsed = useStore((state: any) => state.menuCollapsed);
   const setMenuCollapsed = useStore((state: any) => state.setMenuCollapsed);
   const rightPanelOpen = useStore((state: any) => state.rightPanelOpen);
+  const inspectorTab = useStore((state: any) => state.inspectorTab);
 
   const handleExportPNG = () => {
     window.dispatchEvent(new CustomEvent("trigger-export-png"));
@@ -28,41 +29,46 @@ function App() {
 
   return (
     <ErrorBoundary>
-      <div className="flex flex-col h-screen overflow-hidden bg-[#09090b]">
+      <div className="h-screen w-screen flex flex-col bg-[#09090b] text-zinc-100 overflow-hidden select-none">
         {/* Top-Bar */}
-        <AppBar />
+        <div className="h-12 border-b border-zinc-800 shrink-0 z-30">
+          <AppBar />
+        </div>
 
-        {/* 3-Column Layout */}
-        <div className="flex flex-1 overflow-hidden relative">
-          {/* Left Sidebar (Layers & Pages) */}
-          <SideMenu
-            collapsed={menuCollapsed}
-            onToggle={() => setMenuCollapsed(!menuCollapsed)}
-            onExportPNG={handleExportPNG}
-            onExportJSON={handleExportJSON}
-            onImportJSON={handleImportJSON}
-          />
-
-          {/* Center Canvas Viewport */}
-          <main className="flex-1 relative overflow-hidden bg-[#09090b]">
-            {/* Dark Dot Grid */}
-            <div 
-              className="absolute inset-0 pointer-events-none" 
-              style={{
-                backgroundImage: "radial-gradient(#27272a 1.2px, transparent 1.2px)",
-                backgroundSize: "20px 20px"
-              }}
+        {/* Main Workspace Area */}
+        <div className="flex flex-1 w-full h-[calc(100vh-48px)] relative overflow-hidden">
+          {/* Left Sidebar */}
+          <div className="w-60 border-r border-zinc-800 bg-[#121215] flex flex-col shrink-0 z-20 overflow-y-auto">
+            <SideMenu
+              collapsed={menuCollapsed}
+              onToggle={() => setMenuCollapsed(!menuCollapsed)}
+              onExportPNG={handleExportPNG}
+              onExportJSON={handleExportJSON}
+              onImportJSON={handleImportJSON}
             />
-            
+          </div>
+
+          {/* Center Canvas Area */}
+          <main className="flex-1 h-full relative overflow-hidden bg-[#09090b] bg-[radial-gradient(#27272a_1px,transparent_1px)] [background-size:20px_20px]">
             {/* The Konva Canvas */}
-            <CanvasBase />
+            <div className="w-full h-full">
+              <CanvasBase />
+            </div>
 
             {/* Floating Tool Dock */}
-            <ToolDock />
+            <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30">
+              <ToolDock />
+            </div>
           </main>
 
-          {/* Right Sidebar (Design & Code Inspector) */}
-          {rightPanelOpen && <InspectorPanel />}
+          {/* Right Sidebar */}
+          {rightPanelOpen && (
+            <div className={`border-l border-zinc-800 bg-[#121215] flex flex-col shrink-0 z-20 overflow-y-auto transition-all duration-200 ${
+              inspectorTab === "Code" ? "w-[450px]" : "w-72"
+            }`}>
+              <InspectorPanel />
+            </div>
+          )}
         </div>
 
         <Toast />

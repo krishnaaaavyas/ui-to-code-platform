@@ -81,10 +81,10 @@ export default function AppBar() {
   };
 
   return (
-    <header className="app-bar">
+    <header className="app-bar flex items-center justify-between w-full px-4 h-full bg-[#121215]">
       {/* Left Section */}
-      <div className="app-bar__left">
-        <div className="app-bar__logo flex items-center gap-2 mr-4">
+      <div className="app-bar__left flex items-center gap-3 whitespace-nowrap">
+        <div className="app-bar__logo flex items-center gap-2">
           <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center font-bold text-white shadow-md shadow-indigo-500/20">
             A
           </div>
@@ -122,32 +122,34 @@ export default function AppBar() {
       </div>
 
       {/* Center Section: Zoom Controls */}
-      <div className="app-bar__center flex items-center gap-1.5 bg-zinc-900/50 border border-zinc-800/80 px-2.5 py-1 rounded-full">
-        <button
-          onClick={handleZoomOut}
-          className="p-1 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
-          title="Zoom Out"
-        >
-          <Minus size={14} />
-        </button>
-        <span className="text-zinc-300 text-[11px] font-mono font-medium min-w-[40px] text-center">
-          {Math.round(zoomScale * 100)}%
-        </span>
-        <button
-          onClick={handleZoomIn}
-          className="p-1 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
-          title="Zoom In"
-        >
-          <Plus size={14} />
-        </button>
-        <div className="w-[1px] h-3 bg-zinc-850 mx-1" />
-        <button
-          onClick={handleZoomFit}
-          className="p-1 hover:bg-zinc-800 rounded-md text-zinc-400 hover:text-zinc-200 transition-colors"
-          title="Fit to Screen"
-        >
-          <Maximize2 size={12} />
-        </button>
+      <div className="flex-1 flex justify-center">
+        <div className="bg-zinc-800/80 border border-zinc-700 rounded-lg px-2 py-1 flex items-center gap-2">
+          <button
+            onClick={handleZoomOut}
+            className="p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+            title="Zoom Out"
+          >
+            <Minus size={14} />
+          </button>
+          <span className="text-zinc-300 text-[11px] font-mono font-medium min-w-[32px] text-center">
+            {Math.round(zoomScale * 100)}%
+          </span>
+          <button
+            onClick={handleZoomIn}
+            className="p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+            title="Zoom In"
+          >
+            <Plus size={14} />
+          </button>
+          <div className="w-[1px] h-3 bg-zinc-650 mx-1" />
+          <button
+            onClick={handleZoomFit}
+            className="p-1 hover:bg-zinc-700 rounded text-zinc-400 hover:text-zinc-200 transition-colors"
+            title="Fit to Screen"
+          >
+            <Maximize2 size={12} />
+          </button>
+        </div>
       </div>
 
       {/* Right Section */}

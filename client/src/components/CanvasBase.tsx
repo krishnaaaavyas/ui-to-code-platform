@@ -246,20 +246,25 @@ export default function CanvasBase() {
   }, [elements, boardWidth, boardHeight, boardColor, setCodeGenError, setCodeGenResult, setProposedRefinedResult, setCodeGenLoading, setCodePreviewOpen]);
 
   useEffect(() => {
-    // Stage sizing calculation
-    const updateSize = () => {
-      const parent = boardRef.current;
-      if (parent) {
+    const parent = boardRef.current;
+    if (!parent) return;
+
+    const observer = new ResizeObserver((entries) => {
+      for (const entry of entries) {
         setStageSize({
           width: parent.clientWidth,
           height: parent.clientHeight,
         });
       }
-    };
-    
-    updateSize();
-    window.addEventListener("resize", updateSize);
-    return () => window.removeEventListener("resize", updateSize);
+    });
+
+    observer.observe(parent);
+    setStageSize({
+      width: parent.clientWidth,
+      height: parent.clientHeight,
+    });
+
+    return () => observer.disconnect();
   }, []);
 
   useEffect(() => {
@@ -1118,6 +1123,80 @@ export default function CanvasBase() {
                 </div>
               ))}
             </div>
+          )}
+
+          {stageSize.width > 0 && stageSize.height > 0 && (
+            <Stage
+              ref={stageRef}
+              width={stageSize.width}
+              height={stageSize.height}
+              x={position.x}
+              y={position.y}
+              scaleX={scale}
+              scaleY={scale}
+              draggable={spacePressed || middleMouseDown}
+              style={{ cursor: spacePressed ? (middleMouseDown ? "grabbing" : "grab") : "default" }}
+              onWheel={handleWheel}
+              onWheelZ={handleWheel}
+              onTouchMove={handleTouchMove}
+              onTouchEnd={handleTouchEnd}
+              onMouseDown={(e: any) => {
+                if (e.evt.button === 1) {
+                  e.evt.preventDefault();
+                  setMiddleMouseDown(true);
+                } else {
+                  handleStageMouseDown(e);
+                }
+              }}
+              onTouchStart={handleStageMouseDown}
+              onMouseMove={handleMouseMove}
+              onMouseUp={handleMouseUp}
+              onDragMove={(e: any) => {
+                if (e.target === stageRef.current) {
+                  setPosition({ x: e.target.x(), y: e.target.y() });
+                }
+              }}
+              onDragEnd={(e: any) => {
+                if (e.target === stageRef.current) {
+                  setPosition({ x: e.target.x(), y: e.target.y() });
+                }
+                setMiddleMouseDown(false);
+              }}
+            >
+              <Layer>
+                <Rect
+                  name="background"
+                  x={0}
+                  y={0}
+                  width={boardWidth}
+                  height={boardHeight}
+                  fill={boardColor}
+                  shadowColor="black"
+                  shadowBlur={20}
+                  shadowOpacity={0.3}
+                  shadowOffset={{ x: 0, y: 4 }}
+                />
+                {elements.map((item: any) => renderElement(item))}
+                {draftElement && renderPathItem(draftElement)}
+                {selectedElementId && userRole !== "viewer" && (
+                  <Transformer
+                    key={elements.find((el: any) => el.id === selectedElementId)?.type === "text" ? "text-transformer" : "shape-transformer"}
+                    ref={transformerRef}
+                    rotateEnabled={true}
+                    enabledAnchors={elements.find((el: any) => el.id === selectedElementId)?.type === "text"
+                      ? ["middle-left", "middle-right"]
+                      : ["top-left", "top-right", "bottom-left", "bottom-right", "middle-left", "middle-right", "top-center", "bottom-center"]
+                    }
+                    boundBoxFunc={(oldBox, newBox) => {
+                      if (elements.find((el: any) => el.id === selectedElementId)?.type === "text") {
+                        newBox.width = Math.max(30, newBox.width);
+                      }
+                      return newBox;
+                    }}
+                  />
+                )}
+              </Layer>
+            </Stage>
           )}
 
           {/* Conflict Indicator badge overlay (bottom left canvas corner) */}

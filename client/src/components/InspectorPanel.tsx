@@ -110,7 +110,7 @@ export default function InspectorPanel() {
         </div>
 
         {inspectorTab === "Design" ? (
-          <div className="p-4 flex flex-col gap-6 overflow-y-auto flex-1">
+          <div className="p-3 flex flex-col gap-6 overflow-y-auto flex-1">
             <div className="space-y-1">
               <span className="text-xs font-bold text-zinc-300">Canvas Configuration</span>
               <p className="text-[10px] text-zinc-500">Edit values below to adjust document workspace dimensions</p>
@@ -212,7 +212,7 @@ export default function InspectorPanel() {
       </div>
 
       {inspectorTab === "Design" ? (
-        <div className="p-4 flex flex-col gap-5 overflow-y-auto flex-1 text-zinc-200">
+        <div className="p-3 flex flex-col gap-5 overflow-y-auto flex-1 text-zinc-200">
           {/* Element Type Header Badge */}
           <div className="flex items-center justify-between pb-3 border-b border-zinc-850">
             <span className="text-xs font-extrabold text-zinc-400 uppercase tracking-widest">Alignment</span>
